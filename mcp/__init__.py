@@ -33,6 +33,7 @@ except ImportError:
 
 __constitutional_hash__ = CONSTITUTIONAL_HASH
 
+from . import servers as servers
 from .client import (
     MCPClient,
     MCPClientConfig,
@@ -117,4 +118,5 @@ __all__ = [
     "load_config",
     "load_from_env",
     "load_from_yaml",
+    "servers",
 ]
