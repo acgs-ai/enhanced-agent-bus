@@ -8,7 +8,6 @@ Fixed eval — do not modify once the loop begins.
 
 from __future__ import annotations
 
-import json
 import os
 import statistics
 import subprocess
