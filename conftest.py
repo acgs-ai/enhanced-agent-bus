@@ -40,6 +40,8 @@ def _install_root_testclient_compat() -> None:
     """Reuse the repo-root pytest TestClient shim for package-scoped pytest runs."""
     module_name = "_acgs_root_pytest_conftest"
     root_conftest_path = _repo_root / "conftest.py"
+    if not root_conftest_path.exists():
+        return
 
     root_conftest = sys.modules.get(module_name)
     if root_conftest is None:
