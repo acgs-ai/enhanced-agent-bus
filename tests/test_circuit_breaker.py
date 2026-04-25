@@ -8,6 +8,7 @@ Exercises the documented state machine of
     HALF_OPEN -> CLOSED: after half_open_requests successes
     HALF_OPEN -> OPEN: on any failure during half-open
 """
+
 from __future__ import annotations
 
 import asyncio

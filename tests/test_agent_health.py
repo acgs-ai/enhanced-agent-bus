@@ -4,6 +4,7 @@ Verifies the package's public re-exports and basic model construction
 so that pydantic validators and constitutional-hash invariants stay
 locked against regressions.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

@@ -75,4 +75,3 @@ def test_available_returns_false_for_nonexistent(
 ) -> None:
     monkeypatch.setitem(PLUGINS, "_test_nonexistent_xyz", "enhanced_agent_bus._nonexistent_xyz")
     assert available("_test_nonexistent_xyz") is False
-

@@ -269,7 +269,9 @@ class ConversationContext:
         )
         return hashlib.sha256(context_str.encode()).hexdigest()[:16]
 
-    def update_entity(self, entity_type: str, entity_value: JSONValue, **metadata: JSONValue) -> None:
+    def update_entity(
+        self, entity_type: str, entity_value: JSONValue, **metadata: JSONValue
+    ) -> None:
         """Update an entity in the context."""
         self.entities[entity_type] = {
             "value": entity_value,
@@ -392,9 +394,7 @@ class ContextManager:
         self._reference_patterns = self._compile_reference_patterns()
         self._sessions: dict[str, ConversationContext] = {}
 
-    def create_context(
-        self, user_id: str, session_id: str, **kwargs: Any
-    ) -> ConversationContext:
+    def create_context(self, user_id: str, session_id: str, **kwargs: Any) -> ConversationContext:
         """Create and store a new conversation context."""
         context = ConversationContext(
             user_id=user_id,

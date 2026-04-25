@@ -60,6 +60,7 @@ except ImportError:
         """Discard service metadata when shared metrics are unavailable."""
         _ = (service_name, service_version, constitutional_hash)
 
+
 __all__ = [
     "_get_or_create_counter",
     "_get_or_create_gauge",
