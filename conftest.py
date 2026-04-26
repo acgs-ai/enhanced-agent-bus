@@ -37,26 +37,10 @@ os.environ["PYTHONPATH"] = (
 
 
 def _install_root_testclient_compat() -> None:
-    """Reuse the repo-root pytest TestClient shim for package-scoped pytest runs.
-
-    Only installs when the bus is checked out as a submodule of the ACGS repo
-    (verified by path identity + CompatTestClient symbol). Standalone or
-    unexpected layouts are no-ops so we never bind to a foreign conftest.
-    """
+    """Reuse the repo-root pytest TestClient shim for package-scoped pytest runs."""
     module_name = "_acgs_root_pytest_conftest"
     root_conftest_path = _repo_root / "conftest.py"
-
-    # Layout probe: only treat _repo_root as the ACGS root when its
-    # packages/enhanced_agent_bus path resolves back to our own location.
-    expected_bus_path = _repo_root / "packages" / "enhanced_agent_bus"
-    bus_path = Path(_root_dir)
-    try:
-        layout_matches = expected_bus_path.resolve() == bus_path.resolve()
-    except OSError:  # pragma: no cover - defensive
-        layout_matches = False
-
-    if not root_conftest_path.is_file() or not layout_matches:
-        # Standalone bus checkout or unexpected layout — skip the shim.
+    if not root_conftest_path.exists():
         return
 
     root_conftest = sys.modules.get(module_name)
@@ -69,18 +53,11 @@ def _install_root_testclient_compat() -> None:
         sys.modules[module_name] = root_conftest
         spec.loader.exec_module(root_conftest)
 
-    # Symbol probe: refuse to swap TestClient unless the loaded conftest
-    # actually exposes the expected CompatTestClient (defends against a
-    # foreign repo whose conftest happens to live at the same relative path).
-    compat = getattr(root_conftest, "CompatTestClient", None)
-    if compat is None:
-        return
-
     import fastapi.testclient as fastapi_testclient
     import starlette.testclient as starlette_testclient
 
-    fastapi_testclient.TestClient = compat
-    starlette_testclient.TestClient = compat
+    fastapi_testclient.TestClient = root_conftest.CompatTestClient
+    starlette_testclient.TestClient = root_conftest.CompatTestClient
 
 
 _install_root_testclient_compat()
