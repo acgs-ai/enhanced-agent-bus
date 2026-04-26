@@ -24,6 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[dev]"
+          python -m pip install cryptography  # required by audit_client/signing_provider in conftest
       - name: Lint
         run: python -m ruff check .
       - name: Test
