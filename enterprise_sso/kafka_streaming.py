@@ -267,7 +267,9 @@ class PublishResult:
 class KafkaConnectionPool:
     """Connection pool for Kafka producers."""
 
-    def __init__(self, config: KafkaConfig, producer_config: ProducerConfig, pool_size: int = 5) -> None:
+    def __init__(
+        self, config: KafkaConfig, producer_config: ProducerConfig, pool_size: int = 5
+    ) -> None:
         self.config = config
         self.producer_config = producer_config
         self.pool_size = pool_size

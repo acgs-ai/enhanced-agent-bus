@@ -1105,7 +1105,7 @@ class TestGovernedQueryEngine:
         original_validate = gqe.gov_engine.validate
         call_count = [0]
 
-        def side_effect_validate(text, agent_id=None):
+        def side_effect_validate(text, agent_id=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 # Input validation passes
@@ -1139,7 +1139,7 @@ class TestGovernedQueryEngine:
 
         call_count = [0]
 
-        def side_effect_validate(text, agent_id=None):
+        def side_effect_validate(text, agent_id=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return MagicMock(valid=True, violations=[])
@@ -1203,7 +1203,7 @@ class TestGovernedChatEngine:
 
         call_count = [0]
 
-        def side_effect_validate(text, agent_id=None):
+        def side_effect_validate(text, agent_id=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return MagicMock(valid=True, violations=[])
@@ -1235,7 +1235,7 @@ class TestGovernedChatEngine:
 
         call_count = [0]
 
-        def side_effect_validate(text, agent_id=None):
+        def side_effect_validate(text, agent_id=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return MagicMock(valid=True, violations=[])

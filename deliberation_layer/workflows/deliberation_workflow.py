@@ -451,7 +451,9 @@ class DeliberationWorkflow:
     Workflow logic must be deterministic.
     """
 
-    def __init__(self, workflow_id: str, activities: DefaultDeliberationActivities | None = None) -> None:
+    def __init__(
+        self, workflow_id: str, activities: DefaultDeliberationActivities | None = None
+    ) -> None:
         self.workflow_id = workflow_id
         self.activities = activities or DefaultDeliberationActivities()
 

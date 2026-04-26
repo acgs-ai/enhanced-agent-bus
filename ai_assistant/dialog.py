@@ -607,7 +607,9 @@ class DialogManager:
             return await custom_handler(action, context, nlu_result)  # type: ignore[no-any-return]
 
         # Use lookup table for default action handlers
-        action_handlers: dict[ActionType, Callable[[DialogAction, ConversationContext], JSONDict]] = {
+        action_handlers: dict[
+            ActionType, Callable[[DialogAction, ConversationContext], JSONDict]
+        ] = {
             ActionType.RESPOND: self._handle_respond_action,
             ActionType.ASK_QUESTION: self._handle_ask_question_action,
             ActionType.CONFIRM: self._handle_confirm_action,

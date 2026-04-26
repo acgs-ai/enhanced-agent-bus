@@ -5,6 +5,7 @@ real-import path and the fallback-stub path. These tests must pass whether
 or not the upstream ``src.core.shared.*`` modules are present in the
 environment.
 """
+
 from __future__ import annotations
 
 import pytest
