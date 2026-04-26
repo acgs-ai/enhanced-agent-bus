@@ -15,6 +15,8 @@ Public API functions and classes are re-exported from this module to maintain
 backward compatibility with the original single-file structure.
 """
 
+from __future__ import annotations
+
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, TypeAlias
 
@@ -32,12 +34,12 @@ from .models import (
     ImpactFeatures,
     ImpactLevel,
 )
-from .threshold_manager import AdaptiveThresholds
 from .trace_collector import TraceCollector, TrajectoryRecord
 
 if TYPE_CHECKING:
     from .dtmc_learner import DTMCFitResult, DTMCLearner
     from .governance_engine import AdaptiveGovernanceEngine
+    from .threshold_manager import AdaptiveThresholds
 
 MessagePayload: TypeAlias = dict[str, Any]
 PolicyContext: TypeAlias = dict[str, Any]
@@ -53,6 +55,7 @@ _LAZY_EXPORT_MODULES = {
     "DRIFT_MONITORING_AVAILABLE": ".governance_engine",
     "ONLINE_LEARNING_AVAILABLE": ".governance_engine",
     "AdaptiveGovernanceEngine": ".governance_engine",
+    "AdaptiveThresholds": ".threshold_manager",
     "DTMCFitResult": ".dtmc_learner",
     "DTMCLearner": ".dtmc_learner",
 }
