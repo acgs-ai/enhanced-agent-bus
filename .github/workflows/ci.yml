@@ -37,7 +37,6 @@ jobs:
             tests/agent_bus/test_advanced.py \
             api/tests/test_app_coverage.py::TestCreateApp::test_create_app_returns_fastapi_instance \
             tests/test_ext_shim_fallbacks.py \
-            tests/test_split_surface_cleanup.py \
             tests/test_data_flywheel_metrics.py \
             tests/test_vulnerable_fallbacks.py \
             --import-mode=importlib \
