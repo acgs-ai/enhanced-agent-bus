@@ -72,7 +72,6 @@ calculate_message_impact = _impact_scorer_service.calculate_message_impact
 configure_impact_scorer = _impact_scorer_service.configure_impact_scorer
 cosine_similarity_fallback = _impact_scorer_service.cosine_similarity_fallback
 get_gpu_decision_matrix = _impact_scorer_service.get_gpu_decision_matrix
-get_impact_scorer = _impact_scorer_service.get_impact_scorer
 get_impact_scorer_service = _impact_scorer_service.get_impact_scorer_service
 get_profiling_report = _impact_scorer_service.get_profiling_report
 reset_impact_scorer = _impact_scorer_service.reset_impact_scorer
@@ -95,10 +94,159 @@ except ImportError:
         _RuntimeTensorRTOptimizer = None
 
 logger = get_logger(__name__)
-TRANSFORMERS_AVAILABLE = False
-ONNX_AVAILABLE = False
-TORCH_AVAILABLE = False
-PROFILING_AVAILABLE = False
+
+try:
+    import transformers  # noqa: F401
+
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+
+try:
+    import onnxruntime as _ort
+
+    ONNX_AVAILABLE = True
+except ImportError:
+    _ort = None  # type: ignore[assignment]
+    ONNX_AVAILABLE = False
+
+try:
+    import torch as _torch
+
+    TORCH_AVAILABLE = True
+except ImportError:
+    _torch = None  # type: ignore[assignment]
+    TORCH_AVAILABLE = False
+
+try:
+    import enhanced_agent_bus.profiling  # noqa: F401
+
+    PROFILING_AVAILABLE = True
+except (ImportError, Exception):
+    PROFILING_AVAILABLE = False
+
+_impact_scorer_instance: "ImpactScorer | None" = None
+
+# Cached int8 ONNX session (built once at first get_impact_scorer() call)
+_ort_session_cache: Any | None = None
+_ort_tokenizer_cache: Any | None = None
+_ORT_MAX_SEQ: int = 32  # Impact messages avg 6-12 tokens; seq=32 covers all cases
+_ORT_CACHE_PATH: str = _os.path.join(
+    _os.path.dirname(__file__), "optimized_models", "distilbert_int8_seq32.onnx"
+)
+
+
+def _build_ort_session() -> "tuple[Any, Any] | None":
+    """Build and cache an int8 ONNX Runtime session for DistilBERT.
+
+    Exports model to ONNX (torch.onnx.export) and quantizes to int8
+    on first call. Result cached to disk at _ORT_CACHE_PATH.
+    Returns (session, tokenizer) or None if prerequisites unavailable.
+    """
+    if not (ONNX_AVAILABLE and TORCH_AVAILABLE and TRANSFORMERS_AVAILABLE):
+        return None
+
+    import os as _os2
+    cache_path = _ORT_CACHE_PATH
+    _os2.makedirs(_os2.path.dirname(cache_path), exist_ok=True)
+
+    try:
+        from transformers import AutoModel, AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased", use_fast=True)
+
+        if not _os2.path.exists(cache_path):
+            # Export fp32 ONNX
+            fp32_path = cache_path.replace("_int8_", "_fp32_")
+            if not _os2.path.exists(fp32_path):
+                logger.info("ImpactScorer: exporting DistilBERT to ONNX (first run, ~30s)...")
+                model = AutoModel.from_pretrained("distilbert-base-uncased")
+                model.eval()
+                dummy = tokenizer(
+                    "test", return_tensors="pt", padding="max_length",
+                    truncation=True, max_length=_ORT_MAX_SEQ
+                )
+                cast(Any, _torch).onnx.export(
+                    model,
+                    (dummy["input_ids"], dummy["attention_mask"]),
+                    fp32_path,
+                    input_names=["input_ids", "attention_mask"],
+                    output_names=["last_hidden_state"],
+                    dynamic_axes={
+                        "input_ids": {0: "batch", 1: "seq"},
+                        "attention_mask": {0: "batch", 1: "seq"},
+                        "last_hidden_state": {0: "batch", 1: "seq"},
+                    },
+                    opset_version=14,
+                    do_constant_folding=True,
+                )
+                logger.info("ImpactScorer: ONNX export done → %s", fp32_path)
+
+            # Quantize to int8
+            logger.info("ImpactScorer: quantizing to int8...")
+            from onnxruntime.quantization import QuantType, quantize_dynamic
+            quantize_dynamic(fp32_path, cache_path, weight_type=QuantType.QInt8)
+            logger.info("ImpactScorer: int8 quantization done → %s", cache_path)
+
+        # Load session: sequential mode reduces thread contention under concurrent load
+        opts = cast(Any, _ort).SessionOptions()
+        opts.intra_op_num_threads = 4
+        opts.graph_optimization_level = cast(Any, _ort).GraphOptimizationLevel.ORT_ENABLE_ALL
+        session = cast(Any, _ort).InferenceSession(
+            cache_path, sess_options=opts, providers=["CPUExecutionProvider"]
+        )
+        logger.info("ImpactScorer: int8 ONNX session ready (seq=%d, CPU, threads=4)", _ORT_MAX_SEQ)
+        return session, tokenizer
+
+    except Exception as exc:
+        logger.warning("ImpactScorer: int8 ONNX setup failed (%s), using keyword fallback", type(exc).__name__)
+        return None
+
+
+def get_impact_scorer(config: ScoringConfig | None = None, **kwargs: Any) -> "ImpactScorer":
+    """Get or create a singleton instance of ImpactScorer."""
+    global _impact_scorer_instance, _ort_session_cache, _ort_tokenizer_cache
+    if _impact_scorer_instance is None:
+        # Auto-configure structured logging if not already set up
+        try:
+            import logging as _logging
+
+            from enhanced_agent_bus.observability.structured_logging import (
+                configure_structured_logging,
+            )
+            if not _logging.getLogger().handlers:
+                configure_structured_logging()
+        except Exception:
+            pass
+        _impact_scorer_instance = ImpactScorer(config=config, **kwargs)
+        # Build int8 ONNX session for fast ML inference (bypasses TensorRTOptimizer)
+        if _ort_session_cache is None:
+            result = _build_ort_session()
+            if result is not None:
+                _ort_session_cache, _ort_tokenizer_cache = result
+                _impact_scorer_instance._ort_session = _ort_session_cache
+                _impact_scorer_instance._ort_tokenizer = _ort_tokenizer_cache
+                _impact_scorer_instance._bert_enabled = True
+    return _impact_scorer_instance
+
+
+def get_gpu_decision_matrix() -> "JSONDict":
+    """Get GPU decision matrix from the global profiler."""
+    try:
+        from enhanced_agent_bus.profiling import get_global_profiler
+        metrics = get_global_profiler().get_all_metrics()
+        return {name: m.to_dict() for name, m in metrics.items()}
+    except Exception:
+        return _impact_scorer_service.get_gpu_decision_matrix()
+
+
+def get_profiling_report() -> str:
+    """Get profiling report from the global profiler."""
+    try:
+        from enhanced_agent_bus.profiling import get_global_profiler
+        return get_global_profiler().generate_report()
+    except Exception:
+        return str(_impact_scorer_service.get_profiling_report())
 
 
 class ImpactScorer:
@@ -212,7 +360,7 @@ class ImpactScorer:
         self._enable_caching = enable_caching
         self._embedding_cache: TieredCacheManager | None = None
 
-        if enable_caching:
+        if enable_caching and TieredCacheConfig is not None and TieredCacheManager is not None:
             cache_config = TieredCacheConfig(
                 l1_maxsize=100,
                 l1_ttl=300,
@@ -255,6 +403,13 @@ class ImpactScorer:
         self._volume_counts: dict[str, int] = {}
         self._drift_history: dict[str, list[float]] = {}
         self._tokenization_cache: JSONDict = {}  # Cache for tokenized content
+        # Direct int8 ONNX session (set by get_impact_scorer after _build_ort_session)
+        self._ort_session: Any | None = None
+        self._ort_tokenizer: Any | None = None
+        # Tokenizer output cache: text → {"input_ids": np.array, "attention_mask": np.array}
+        self._ort_tok_cache: dict[str, Any] = {}
+        # Semantic score cache: text → float (safe since semantic score is pure fn of text)
+        self._ort_score_cache: dict[str, float] = {}
         self._optimizer = None
         if self._onnx_enabled and _RuntimeTensorRTOptimizer is not None:
             self._optimizer = _RuntimeTensorRTOptimizer(self.model_name)
@@ -372,6 +527,15 @@ class ImpactScorer:
         return self.service.get_impact_score(context)
 
     def calculate_impact_score(
+        self, message: JSONDict | object, context: JSONDict | None = None
+    ) -> float:
+        if PROFILING_AVAILABLE:
+            from enhanced_agent_bus.profiling import get_global_profiler
+            with get_global_profiler().track(self.model_name):
+                return self._calculate_impact_score_impl(message, context)
+        return self._calculate_impact_score_impl(message, context)
+
+    def _calculate_impact_score_impl(
         self, message: JSONDict | object, context: JSONDict | None = None
     ) -> float:
         if context is None:
@@ -705,6 +869,65 @@ class ImpactScorer:
         text = self._extract_text_content(message).strip().lower()
         if not text:
             return 0.0
+
+        # Use optimized ONNX/TensorRT inference when available
+        if self._onnx_enabled and self._optimizer is not None:
+            try:
+                # Track inference with profiler if available
+                if PROFILING_AVAILABLE:
+                    from enhanced_agent_bus.profiling import get_global_profiler
+
+                    with get_global_profiler().track(self.model_name):
+                        embeddings = self._optimizer.infer(text)
+                else:
+                    embeddings = self._optimizer.infer(text)
+
+                # Convert embeddings to a score (mock logic for now, in real it would be a head)
+                if NUMPY_AVAILABLE and isinstance(embeddings, np.ndarray):
+                    score = float(np.mean(np.abs(embeddings)) * 2.0)
+                    return min(1.0, max(0.0, score))
+            except Exception as _e:
+                logger.warning(
+                    "ImpactScorer: Optimized inference error, falling back",
+                    error=type(_e).__name__,
+                )
+
+        # Use direct int8 ONNX session when available (fastest path, no TensorRTOptimizer)
+        if self._ort_session is not None and self._ort_tokenizer is not None:
+            try:
+                # Check semantic score cache first (semantic score is pure fn of text)
+                cached_score = self._ort_score_cache.get(text)
+                if cached_score is not None:
+                    return cached_score
+
+                # Cache tokenized inputs by text to avoid redundant tokenization
+                cached = self._ort_tok_cache.get(text)
+                if cached is None:
+                    tok_out = cast(Any, self._ort_tokenizer)(
+                        text,
+                        return_tensors="np",
+                        padding="max_length",
+                        truncation=True,
+                        max_length=_ORT_MAX_SEQ,
+                    )
+                    cached = {"input_ids": tok_out["input_ids"], "attention_mask": tok_out["attention_mask"]}
+                    if len(self._ort_tok_cache) < 512:  # bound cache size
+                        self._ort_tok_cache[text] = cached
+                outputs = cast(Any, self._ort_session).run(None, cached)
+                # Mean-pool last hidden state → scalar score
+                last_hidden = outputs[0]  # (1, seq, 768)
+                if NUMPY_AVAILABLE:
+                    score = float(np.mean(np.abs(last_hidden)) * 2.0)
+                    score = min(1.0, max(0.0, score))
+                    if len(self._ort_score_cache) < 512:  # bound cache size
+                        self._ort_score_cache[text] = score
+                    return score
+            except Exception as _e:
+                logger.warning(
+                    "ImpactScorer: int8 ONNX inference error, falling back to keywords",
+                    error=type(_e).__name__,
+                )
+
         # Use Rust DistilBERT when available — do NOT fall through to keywords
         if self._bert_enabled and self._rust_scorer is not None:
             try:

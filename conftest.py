@@ -45,6 +45,8 @@ def _install_root_testclient_compat() -> None:
     """
     module_name = "_acgs_root_pytest_conftest"
     root_conftest_path = _repo_root / "conftest.py"
+    if not root_conftest_path.exists():
+        return
 
     # Layout probe: only treat _repo_root as the ACGS root when its
     # packages/enhanced_agent_bus path resolves back to our own location.

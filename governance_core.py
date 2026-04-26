@@ -45,9 +45,13 @@ try:
         raise AttributeError("constitutional_swarm is missing required exports")
 
     SWARM_AVAILABLE = True
-except (ImportError, AttributeError) as exc:
+except (ImportError, AttributeError, SyntaxError) as exc:
     SWARM_IMPORT_ERROR = exc
     SWARM_AVAILABLE = False
+    Constitution = None
+    ConstitutionalMesh = None
+    AgentDNA = None
+    ConstitutionalViolationError = Exception
 else:
     Constitution = _Constitution
     ConstitutionalMesh = _ConstitutionalMesh

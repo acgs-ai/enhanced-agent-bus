@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# ruff: noqa: I001 — import order is load-bearing: message_processor must
+# precede persistence.executor/repository so it resolves the persistence
+# circular-import chain (see block comment below).
+
 """ACGS-2 Enhanced Agent Bus API Application.
 
 Constitutional Hash: 608508a9bd224290
@@ -10,7 +14,7 @@ import os
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from importlib import import_module
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pybreaker
 from fastapi import APIRouter, FastAPI
@@ -43,13 +47,20 @@ from ..api_exceptions import (
     policy_error_handler,
     rate_limit_exceeded_handler,
 )
-from ..batch_processor import BatchMessageProcessor
-from ..maci_enforcement import MACIEnforcer, MACIRoleRegistry
+
+# message_processor must load FIRST: it is the only guard that pre-loads
+# persistence.repository to resolve the circular import chain
+# persistence/__init__.py -> executor -> models -> data_flywheel
+# -> dataset_builder -> persistence.repository -> models.
+# Reordering this block breaks startup (cold import regresses ~1500ms).
 from ..message_processor import MessageProcessor
+from ..maci_enforcement import MACIEnforcer, MACIRoleRegistry
 from ..persistence.executor import DurableWorkflowExecutor, WorkflowContext
-from ..persistence.postgres_repository import PostgresWorkflowRepository
 from ..persistence.repository import InMemoryWorkflowRepository
-from ..pqc_enforcement_config import EnforcementModeConfigService
+
+if TYPE_CHECKING:
+    from ..batch_processor import BatchMessageProcessor
+    from ..persistence.postgres_repository import PostgresWorkflowRepository
 from .config import (
     API_VERSION,
     BATCH_PROCESSOR_ITEM_TIMEOUT_SECONDS,
@@ -73,28 +84,6 @@ from .rate_limiting import (
     limiter,
     require_rate_limiting_dependencies,
 )
-from .routes.agent_health import router as agent_health_router
-from .routes.badge import router as badge_router
-from .routes.batch import router as batch_router
-from .routes.governance import (
-    InMemoryPQCConfigBackend,
-    MACIRecordStore,
-    RedisMACIRecordStore,
-    RedisMACIRoleRegistry,
-)
-from .routes.governance import (
-    router as governance_router,
-)
-from .routes.health import router as health_router
-from .routes.messages import router as messages_router
-from .routes.policies import router as policies_router
-from .routes.public_v1 import router as public_v1_router
-from .routes.signup import router as signup_router
-from .routes.stats import router as stats_router
-from .routes.usage import router as usage_router
-from .routes.widget_js import router as widget_js_router
-from .routes.workflows import router as workflows_router
-from .routes.z3 import router as z3_router
 
 _API_APP_OPERATION_ERRORS = (
     RuntimeError,
@@ -145,9 +134,6 @@ def _load_sessions_module() -> Any | None:
         return None
 
 
-visual_studio_router = _load_visual_studio_router()
-copilot_router = _load_copilot_router()
-
 # pybreaker is a required dependency — always available
 CIRCUIT_BREAKER_AVAILABLE = True
 
@@ -156,24 +142,24 @@ agent_bus: MessageProcessor | dict[str, Any] | None = None
 batch_processor: BatchMessageProcessor | None = None
 message_circuit_breaker: pybreaker.CircuitBreaker | None = None
 workflow_executor: DurableWorkflowExecutor | None = None
-workflow_repository: PostgresWorkflowRepository | InMemoryWorkflowRepository | None = None
+workflow_repository: Any = None
 
 
-_CORE_ROUTERS: tuple[APIRouter, ...] = (
-    health_router,
-    agent_health_router,
-    messages_router,
-    batch_router,
-    policies_router,
-    governance_router,
-    public_v1_router,
-    badge_router,
-    signup_router,
-    stats_router,
-    usage_router,
-    widget_js_router,
-    workflows_router,
-    z3_router,
+_CORE_ROUTE_MODULES: tuple[str, ...] = (
+    ".routes.health",
+    ".routes.agent_health",
+    ".routes.messages",
+    ".routes.batch",
+    ".routes.policies",
+    ".routes.governance",
+    ".routes.public_v1",
+    ".routes.badge",
+    ".routes.signup",
+    ".routes.stats",
+    ".routes.usage",
+    ".routes.widget_js",
+    ".routes.workflows",
+    ".routes.z3",
 )
 
 
@@ -229,21 +215,18 @@ def _initialize_agent_bus_state(
 
 async def _initialize_workflow_components(
     app: FastAPI,
-) -> tuple[
-    DurableWorkflowExecutor | None,
-    PostgresWorkflowRepository | InMemoryWorkflowRepository | None,
-]:
+) -> tuple[DurableWorkflowExecutor | None, Any]:
     """Initialize durable workflow repository and executor."""
     logger.info("Initializing Durable Workflow Executor...")
     try:
+        from ..persistence.postgres_repository import PostgresWorkflowRepository
+
         db_url = os.environ.get(
             "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
         )
         normalized_dsn = _normalize_workflow_dsn(db_url)
 
-        repository: PostgresWorkflowRepository | InMemoryWorkflowRepository = (
-            PostgresWorkflowRepository(dsn=normalized_dsn)
-        )
+        repository: Any = PostgresWorkflowRepository(dsn=normalized_dsn)
         await repository.initialize()
         executor = _register_builtin_workflows(DurableWorkflowExecutor(repository=repository))
         app.state.workflow_executor = executor
@@ -280,6 +263,8 @@ def _initialize_batch_processor_state(
     message_processor: MessageProcessor | dict[str, Any],
 ) -> BatchMessageProcessor | None:
     """Initialize batch message processor with defensive error handling."""
+    from ..batch_processor import BatchMessageProcessor
+
     logger.info("Initializing Batch Message Processor...")
     try:
         processor = BatchMessageProcessor(
@@ -352,7 +337,7 @@ async def _shutdown_session_manager_if_available() -> None:
 
 
 async def _close_workflow_repository_if_available(
-    repository: PostgresWorkflowRepository | InMemoryWorkflowRepository | None,
+    repository: Any,
 ) -> None:
     """Close workflow repository during shutdown when initialized."""
     try:
@@ -402,6 +387,9 @@ def _bind_runtime_state(app: FastAPI, *, bus: MessageProcessor | dict[str, Any])
 
 def _configure_in_memory_governance_state(application: FastAPI) -> None:
     """Wire development/test-only in-memory governance backends."""
+    from ..pqc_enforcement_config import EnforcementModeConfigService
+    from .routes.governance import InMemoryPQCConfigBackend, MACIRecordStore
+
     application.state.governance_redis_client = None
     application.state.maci_record_store = MACIRecordStore()
     application.state.maci_role_registry = MACIRoleRegistry()
@@ -420,6 +408,9 @@ def _configure_shared_governance_state(
     redis_client: Any,
 ) -> None:
     """Wire shared Redis-backed governance backends."""
+    from ..pqc_enforcement_config import EnforcementModeConfigService
+    from .routes.governance import RedisMACIRecordStore, RedisMACIRoleRegistry
+
     registry = RedisMACIRoleRegistry(redis_client=redis_client)
     application.state.governance_redis_client = redis_client
     application.state.maci_record_store = RedisMACIRecordStore(redis_client=redis_client)
@@ -435,6 +426,8 @@ def _configure_shared_governance_state(
 
 def _governance_state_is_shared(application: FastAPI) -> bool:
     """Return whether the app already uses shared governance backends."""
+    from .routes.governance import RedisMACIRecordStore, RedisMACIRoleRegistry
+
     app_state = application.state
     return isinstance(getattr(app_state, "maci_record_store", None), RedisMACIRecordStore) and (
         isinstance(getattr(app_state, "maci_role_registry", None), RedisMACIRoleRegistry)
@@ -462,9 +455,11 @@ def _ensure_governance_state(
 
 def _attach_pqc_postgres_fallback(
     application: FastAPI,
-    repository: PostgresWorkflowRepository | InMemoryWorkflowRepository | None,
+    repository: Any,
 ) -> None:
     """Attach PostgreSQL fallback storage to the shared PQC service when available."""
+    from ..pqc_enforcement_config import EnforcementModeConfigService
+
     service = getattr(application.state, "pqc_enforcement_service", None)
     if not isinstance(service, EnforcementModeConfigService):
         return
@@ -509,19 +504,22 @@ def _configure_application_state(application: FastAPI) -> None:
 
 
 def _register_core_routers(application: FastAPI) -> None:
-    """Register the stable built-in router set."""
-    for router in _CORE_ROUTERS:
-        application.include_router(router)
+    """Register the stable built-in router set (lazy imports at call time)."""
+    for module_path in _CORE_ROUTE_MODULES:
+        module = import_module(module_path, package=__package__)
+        router = getattr(module, "router", None)
+        if isinstance(router, APIRouter):
+            application.include_router(router)
 
 
 def _register_feature_routers(application: FastAPI) -> None:
     """Register optional feature routers when present."""
-    if visual_studio_router is not None:
-        application.include_router(visual_studio_router)
+    if (vsr := _load_visual_studio_router()) is not None:
+        application.include_router(vsr)
         logger.info("Visual Studio API router registered")
 
-    if copilot_router is not None:
-        application.include_router(copilot_router)
+    if (cr := _load_copilot_router()) is not None:
+        application.include_router(cr)
         logger.info("Policy Copilot API router registered")
 
     _register_optional_routers(application)
@@ -621,15 +619,23 @@ def create_app() -> FastAPI:
     return _configure_application(application)
 
 
-# Create the default app instance
-app = create_app()
+_module_app: FastAPI | None = None
+
+
+def __getattr__(name: str) -> Any:
+    global _module_app
+    if name == "app":
+        if _module_app is None:
+            _module_app = create_app()
+        return _module_app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        app,
+        create_app(),
         host="127.0.0.1",  # nosec B104 - Intentional for container deployment
         port=DEFAULT_API_PORT,
         reload=False,
@@ -641,9 +647,8 @@ if __name__ == "__main__":
     )
 
 
-__all__ = [
+__all__ = [  # noqa: F822 — "app" provided lazily via module __getattr__ (PEP 562)
     "agent_bus",
-    "agent_health_router",
     "app",
     "batch_processor",
     "create_app",

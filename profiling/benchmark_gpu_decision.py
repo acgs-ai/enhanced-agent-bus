@@ -213,16 +213,11 @@ class GPUBenchmark:
 
         # Initialize scorer
         logger.info("📦 Initializing ImpactScorer...")
-        try:
-            scorer = get_impact_scorer()
-            logger.info(f"   Model: {scorer.model_name}")
-            logger.info(f"   BERT enabled: {scorer._bert_enabled}")
-            logger.info(f"   ONNX enabled: {scorer._onnx_enabled}")
-            logger.info("")
-        except BENCHMARK_SCORER_INIT_ERRORS as e:
-            logger.error(f"   ⚠️  Scorer initialization failed: {e}")
-            logger.info("   Running with mock benchmark...")
-            return self._run_mock_benchmark()
+        scorer = get_impact_scorer(use_onnx=True)
+        logger.info(f"   Model: {scorer.model_name}")
+        logger.info(f"   BERT enabled: {scorer._bert_enabled}")
+        logger.info(f"   ONNX enabled: {scorer._onnx_enabled}")
+        logger.info("")
 
         # Run benchmarks
         self.run_warmup(scorer)
@@ -232,8 +227,9 @@ class GPUBenchmark:
 
         # Get profiling results
         logger.info("📈 Generating profiling report...")
-        report = get_profiling_report()
-        gpu_matrix = get_gpu_decision_matrix()
+        report = self.profiler.generate_report()
+        metrics = self.profiler.get_all_metrics()
+        gpu_matrix = {name: m.to_dict() for name, m in metrics.items()}
 
         # Compile results
         self.results = {
@@ -380,6 +376,13 @@ class GPUBenchmark:
 
 
 def main():
+    print("DEBUG: Starting benchmark script main()")
+    from enhanced_agent_bus.observability.structured_logging import (
+        configure_structured_logging,
+    )
+
+    configure_structured_logging()
+
     parser = argparse.ArgumentParser(
         description="ACGS-2 GPU Acceleration Benchmark",
         formatter_class=argparse.RawDescriptionHelpFormatter,

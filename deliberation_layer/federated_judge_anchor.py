@@ -324,9 +324,11 @@ class FederatedJudgeAnchor:
             if len(coalition[best_key]) >= self._threshold:
                 winning_sigs = coalition[best_key]
                 winner_agent_id = best_key[0]
-                # Recover the winner text from any candidate matching the winner_agent_id.
+                # Recover the winner text from the candidate matching both agent_id and
+                # the signed text hash, preventing a duplicate-agent-id mismatch attack.
+                _winner_text_hash = best_key[1]
                 for c in candidates:
-                    if c.agent_id == winner_agent_id:
+                    if c.agent_id == winner_agent_id and _text_hash(c.text) == _winner_text_hash:
                         winner_text = c.text
                         break
 

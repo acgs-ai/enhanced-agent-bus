@@ -2,7 +2,7 @@
 # Constitutional Hash: 608508a9bd224290
 
 [build-system]
-requires = ["setuptools>=80.9.0", "wheel>=0.46.0"]  # CVE-2025-69226, CVE-2025-69229 patched
+requires = ["setuptools>=80.9.0", "wheel>=0.46.2"]  # CVE-2025-69226, CVE-2025-69229 patched
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,7 +11,7 @@ version = "3.0.2"
 description = "ACGS-2 Enhanced Agent Bus with Constitutional Compliance"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "Apache-2.0"
+license = {text = "Apache-2.0"}
 authors = [
     {name = "ACGS Team"}
 ]

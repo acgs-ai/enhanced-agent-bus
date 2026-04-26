@@ -5,17 +5,18 @@ Constitutional Hash: 608508a9bd224290
 MACI Role: JUDICIAL (constitutional validation)
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 JSONDict: TypeAlias = dict[str, Any]
 
-from enhanced_agent_bus.adaptive_governance import AdaptiveGovernanceEngine
 from enhanced_agent_bus.models import CONSTITUTIONAL_HASH, AgentMessage
 from enhanced_agent_bus.observability.structured_logging import get_logger
 from enhanced_agent_bus.validators import ValidationResult
 
 if TYPE_CHECKING:
-    pass
+    from enhanced_agent_bus.adaptive_governance import AdaptiveGovernanceEngine
 
 try:
     from ..adaptive_governance import (

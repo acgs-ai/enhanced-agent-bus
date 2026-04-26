@@ -77,7 +77,7 @@ else:
 
 try:
     _metering_integration: Any | None
-    from . import metering_integration as _metering_integration
+    from .. import metering_integration as _metering_integration
 except ImportError:
     _metering_integration = None
 
@@ -93,7 +93,7 @@ else:
 
 try:
     _opa_client_module: Any | None
-    from . import opa_client as _opa_client_module
+    from .. import opa_client as _opa_client_module
 except ImportError:
     _opa_client_module = None
 
@@ -118,7 +118,7 @@ _OPAClient: Any = _ImportedOPAClient
 
 try:
     _policy_client_module: Any | None
-    from . import policy_client as _policy_client_module
+    from .. import policy_client as _policy_client_module
 except ImportError:
     _policy_client_module = None
 

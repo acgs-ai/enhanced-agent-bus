@@ -37,6 +37,14 @@ class _FallbackTieredCacheManager:
         return key in self._local
 
 
+class _FallbackTieredCacheConfig:
+    """Minimal config stub for fallback cache."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
 _shared_cache_manager: Any | None = None
 try:
     from src.core.shared.cache import manager as _shared_cache_manager_module
@@ -51,7 +59,7 @@ if _shared_cache_manager is not None:
     get_cache_manager = cast(Any, getattr(_shared_cache_manager, "get_cache_manager", None))
 else:
     TieredCacheManager = _FallbackTieredCacheManager
-    TieredCacheConfig = None
+    TieredCacheConfig = _FallbackTieredCacheConfig
 
     def get_cache_manager(**kwargs: Any) -> _CacheManagerProtocol:
         return _FallbackTieredCacheManager(**kwargs)

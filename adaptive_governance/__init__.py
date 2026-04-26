@@ -15,20 +15,16 @@ Public API functions and classes are re-exported from this module to maintain
 backward compatibility with the original single-file structure.
 """
 
-from typing import Any, TypeAlias
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from .amendment_recommender import (
     AmendmentRecommendation,
     AmendmentRecommender,
     RecommendationPriority,
     RecommendationTrigger,
-)
-from .dtmc_learner import DTMCFitResult, DTMCLearner
-from .governance_engine import (
-    AB_TESTING_AVAILABLE,
-    DRIFT_MONITORING_AVAILABLE,
-    ONLINE_LEARNING_AVAILABLE,
-    AdaptiveGovernanceEngine,
 )
 from .impact_scorer import ImpactScorer
 from .models import (
@@ -38,8 +34,12 @@ from .models import (
     ImpactFeatures,
     ImpactLevel,
 )
-from .threshold_manager import AdaptiveThresholds
 from .trace_collector import TraceCollector, TrajectoryRecord
+
+if TYPE_CHECKING:
+    from .dtmc_learner import DTMCFitResult, DTMCLearner
+    from .governance_engine import AdaptiveGovernanceEngine
+    from .threshold_manager import AdaptiveThresholds
 
 MessagePayload: TypeAlias = dict[str, Any]
 PolicyContext: TypeAlias = dict[str, Any]
@@ -48,7 +48,37 @@ PolicyContext: TypeAlias = dict[str, Any]
 from ..exceptions.operations import GovernanceError
 
 # Global instance
-_adaptive_governance: AdaptiveGovernanceEngine | None = None
+_adaptive_governance: Any | None = None
+
+_LAZY_EXPORT_MODULES = {
+    "AB_TESTING_AVAILABLE": ".governance_engine",
+    "DRIFT_MONITORING_AVAILABLE": ".governance_engine",
+    "ONLINE_LEARNING_AVAILABLE": ".governance_engine",
+    "AdaptiveGovernanceEngine": ".governance_engine",
+    "AdaptiveThresholds": ".threshold_manager",
+    "DTMCFitResult": ".dtmc_learner",
+    "DTMCLearner": ".dtmc_learner",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_EXPORT_MODULES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    try:
+        module = import_module(_LAZY_EXPORT_MODULES[name], __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    except ImportError as exc:
+        # Re-raise as AttributeError so getattr(module, name, default) callers
+        # (e.g. bus/core.py) receive the default instead of a hard crash.
+        # This allows adaptive governance to degrade gracefully when optional
+        # ML deps (numpy, sklearn) are not installed.
+        raise AttributeError(
+            f"module {__name__!r}: {name!r} requires optional ML dependencies "
+            f"(`pip install enhanced-agent-bus[ml]`): {exc}"
+        ) from exc
 
 
 async def initialize_adaptive_governance(constitutional_hash: str) -> AdaptiveGovernanceEngine:
@@ -56,6 +86,8 @@ async def initialize_adaptive_governance(constitutional_hash: str) -> AdaptiveGo
     global _adaptive_governance
 
     if _adaptive_governance is None:
+        from .governance_engine import AdaptiveGovernanceEngine
+
         _adaptive_governance = AdaptiveGovernanceEngine(constitutional_hash)
         await _adaptive_governance.initialize()
 

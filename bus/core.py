@@ -328,7 +328,12 @@ class EnhancedAgentBus:
             enable_metering=bool(kwargs.get("enable_metering", True)) and METERING_AVAILABLE,
             constitutional_hash=CONSTITUTIONAL_HASH,
         )
-        self._enable_maci = bool(kwargs.get("enable_maci", True)) and MACI_AVAILABLE
+        maci_factories_available = (
+            _maci_role_registry_factory is not None and _maci_enforcer_factory is not None
+        )
+        self._enable_maci = bool(kwargs.get("enable_maci", True)) and (
+            MACI_AVAILABLE or maci_factories_available
+        )
         self._maci_registry: MACIRegistryProtocol | None = cast(
             MACIRegistryProtocol | None,
             kwargs.get("maci_registry")
