@@ -15,20 +15,14 @@ Public API functions and classes are re-exported from this module to maintain
 backward compatibility with the original single-file structure.
 """
 
-from typing import Any, TypeAlias
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from .amendment_recommender import (
     AmendmentRecommendation,
     AmendmentRecommender,
     RecommendationPriority,
     RecommendationTrigger,
-)
-from .dtmc_learner import DTMCFitResult, DTMCLearner
-from .governance_engine import (
-    AB_TESTING_AVAILABLE,
-    DRIFT_MONITORING_AVAILABLE,
-    ONLINE_LEARNING_AVAILABLE,
-    AdaptiveGovernanceEngine,
 )
 from .impact_scorer import ImpactScorer
 from .models import (
@@ -41,6 +35,10 @@ from .models import (
 from .threshold_manager import AdaptiveThresholds
 from .trace_collector import TraceCollector, TrajectoryRecord
 
+if TYPE_CHECKING:
+    from .dtmc_learner import DTMCFitResult, DTMCLearner
+    from .governance_engine import AdaptiveGovernanceEngine
+
 MessagePayload: TypeAlias = dict[str, Any]
 PolicyContext: TypeAlias = dict[str, Any]
 
@@ -48,7 +46,26 @@ PolicyContext: TypeAlias = dict[str, Any]
 from ..exceptions.operations import GovernanceError
 
 # Global instance
-_adaptive_governance: AdaptiveGovernanceEngine | None = None
+_adaptive_governance: Any | None = None
+
+_LAZY_EXPORT_MODULES = {
+    "AB_TESTING_AVAILABLE": ".governance_engine",
+    "DRIFT_MONITORING_AVAILABLE": ".governance_engine",
+    "ONLINE_LEARNING_AVAILABLE": ".governance_engine",
+    "AdaptiveGovernanceEngine": ".governance_engine",
+    "DTMCFitResult": ".dtmc_learner",
+    "DTMCLearner": ".dtmc_learner",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_EXPORT_MODULES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module = import_module(_LAZY_EXPORT_MODULES[name], __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
 
 
 async def initialize_adaptive_governance(constitutional_hash: str) -> AdaptiveGovernanceEngine:
@@ -56,6 +73,8 @@ async def initialize_adaptive_governance(constitutional_hash: str) -> AdaptiveGo
     global _adaptive_governance
 
     if _adaptive_governance is None:
+        from .governance_engine import AdaptiveGovernanceEngine
+
         _adaptive_governance = AdaptiveGovernanceEngine(constitutional_hash)
         await _adaptive_governance.initialize()
 
