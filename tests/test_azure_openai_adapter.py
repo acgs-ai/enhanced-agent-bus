@@ -34,7 +34,7 @@ from enhanced_agent_bus.llm_adapters.config import AzureOpenAIAdapterConfig
 def _make_config(**overrides):
     """Create an AzureOpenAIAdapterConfig with sensible test defaults."""
     defaults = {
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "deployment_name": "test-deployment",
         "azure_endpoint": "https://test.openai.azure.com",
         "api_version": "2024-02-15-preview",
@@ -71,14 +71,14 @@ def _mock_openai_response():
     response = MagicMock()
     response.choices = [choice]
     response.usage = usage
-    response.model = "gpt-5.4"
+    response.model = "gpt-5.5"
     response.id = "chatcmpl-test"
     response.created = 1234567890
     response.prompt_filter_results = None
     response.model_dump.return_value = {
         "id": "chatcmpl-test",
         "object": "chat.completion",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "choices": [
             {
                 "index": 0,
@@ -103,7 +103,7 @@ def _mock_openai_response():
 class TestAzureOpenAIAdapterInit:
     def test_init_with_config(self):
         adapter = _make_adapter()
-        assert adapter.model == "gpt-5.4"
+        assert adapter.model == "gpt-5.5"
         assert adapter.deployment_name == "test-deployment"
         assert adapter.api_key == "test-api-key"
 
@@ -122,7 +122,7 @@ class TestAzureOpenAIAdapterInit:
                 deployment_name="my-deploy",
                 api_key="key",
             )
-            assert adapter.model == "gpt-5.4"
+            assert adapter.model == "gpt-5.5"
 
     def test_provider_name(self):
         adapter = _make_adapter()
@@ -336,7 +336,7 @@ class TestEstimateCost:
         config = _make_config(model="unknown-model-xyz")
         adapter = _make_adapter(config=config)
         cost = adapter.estimate_cost(1000, 500)
-        # Should fall back to gpt-5.2 pricing
+        # Should fall back to gpt-5.5 pricing
         assert cost.total_cost_usd > 0
 
     def test_zero_tokens(self):

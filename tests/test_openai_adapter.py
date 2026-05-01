@@ -24,7 +24,7 @@ from enhanced_agent_bus.llm_adapters.openai_adapter import OpenAIAdapter
 def adapter():
     """Create an adapter with a fake API key so __init__ does not fail."""
     with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-key-fake"}):
-        return OpenAIAdapter(model="gpt-5.2", api_key="sk-test-key-fake")
+        return OpenAIAdapter(model="gpt-5.5", api_key="sk-test-key-fake")
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ class TestOpenAIAdapterInit:
     def test_default_model(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
             a = OpenAIAdapter(api_key="sk-fake")
-        assert a.model == "gpt-5.4"
+        assert a.model == "gpt-5.5"
 
     def test_custom_model(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
@@ -66,7 +66,7 @@ class TestEstimateCost:
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
             a = OpenAIAdapter(model="totally-unknown-model", api_key="sk-fake")
         cost = a.estimate_cost(prompt_tokens=1000, completion_tokens=500)
-        # Falls back to gpt-5.4 pricing
+        # Falls back to gpt-5.5 pricing
         assert cost.total_cost_usd > 0
 
     def test_zero_tokens(self, adapter):
@@ -129,21 +129,21 @@ class TestCountTokens:
 class TestClientCreation:
     def test_get_client_no_api_key_raises(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
-            a = OpenAIAdapter(model="gpt-5.2", api_key="sk-fake")
+            a = OpenAIAdapter(model="gpt-5.5", api_key="sk-fake")
         a.api_key = None
         with pytest.raises(ValueError, match="API key"):
             a._get_client()
 
     def test_get_async_client_no_api_key_raises(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
-            a = OpenAIAdapter(model="gpt-5.2", api_key="sk-fake")
+            a = OpenAIAdapter(model="gpt-5.5", api_key="sk-fake")
         a.api_key = None
         with pytest.raises(ValueError, match="API key"):
             a._get_async_client()
 
     def test_get_client_no_openai_raises(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
-            a = OpenAIAdapter(model="gpt-5.2", api_key="sk-fake")
+            a = OpenAIAdapter(model="gpt-5.5", api_key="sk-fake")
         with patch.dict("sys.modules", {"openai": None}):
             a._client = None
             with pytest.raises(ImportError, match="openai"):
@@ -151,7 +151,7 @@ class TestClientCreation:
 
     def test_get_async_client_no_openai_raises(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
-            a = OpenAIAdapter(model="gpt-5.2", api_key="sk-fake")
+            a = OpenAIAdapter(model="gpt-5.5", api_key="sk-fake")
         with patch.dict("sys.modules", {"openai": None}):
             a._async_client = None
             with pytest.raises(ImportError, match="openai"):
@@ -170,7 +170,7 @@ class TestComplete:
         mock_resp.model_dump.return_value = {
             "id": "chatcmpl-test",
             "object": "chat.completion",
-            "model": "gpt-5.2",
+            "model": "gpt-5.5",
             "choices": [
                 {
                     "index": 0,
@@ -324,7 +324,7 @@ class TestStreamingHelpers:
 class TestModelPricing:
     def test_pricing_dict_has_expected_models(self):
         pricing = OpenAIAdapter.MODEL_PRICING
-        assert "gpt-5.2" in pricing
+        assert "gpt-5.5" in pricing
         assert "gpt-4o" in pricing
         assert "gpt-3.5-turbo" in pricing
         for model_pricing in pricing.values():

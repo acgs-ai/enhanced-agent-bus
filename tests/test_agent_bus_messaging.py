@@ -16,7 +16,7 @@ try:
         get_agent_bus,
         reset_agent_bus,
     )
-    from enhanced_agent_bus.bus.messaging import MessageHandler
+    from enhanced_agent_bus.bus.messaging import MessageGovernanceDecision, MessageHandler
     from enhanced_agent_bus.exceptions import (
         BusNotStartedError,
         ConstitutionalHashMismatchError,
@@ -34,7 +34,7 @@ except ImportError:
 
     sys.path.insert(0, "/home/martin/ACGS")
     from enhanced_agent_bus.agent_bus import EnhancedAgentBus
-    from enhanced_agent_bus.bus.messaging import MessageHandler
+    from enhanced_agent_bus.bus.messaging import MessageGovernanceDecision, MessageHandler
     from enhanced_agent_bus.models import (
         CONSTITUTIONAL_HASH,
         AgentMessage,
@@ -238,6 +238,29 @@ class TestMessageHandlerFallback:
         assert result.is_valid is False
         assert result.decision == "DENY"
 
+    async def test_decide_message_governance_separates_delivery_decision(self, sample_message):
+        processor = MagicMock()
+        processor.process = AsyncMock(return_value=ValidationResult(is_valid=True, decision="ALLOW"))
+        handler = MessageHandler(
+            processor=processor,
+            router_component=MagicMock(),
+            registry_manager=MagicMock(),
+            governance=MagicMock(),
+            validator=MagicMock(),
+            message_queue=MagicMock(),
+            deliberation_queue=None,
+            metering_manager=MagicMock(),
+            kafka_bus=None,
+            metrics={},
+            config={},
+        )
+
+        decision = await handler.decide_message_governance(sample_message)
+
+        assert isinstance(decision, MessageGovernanceDecision)
+        assert decision.allow_delivery is True
+        assert decision.result.is_valid is True
+
     async def test_fallback_allows_when_explicitly_prevalidated(self, sample_message):
         processor = MagicMock()
         processor.process = AsyncMock(side_effect=RuntimeError("processor down"))
@@ -260,6 +283,40 @@ class TestMessageHandlerFallback:
 
         assert result.is_valid is True
         assert result.decision == "ALLOW"
+
+    async def test_finalize_message_delivery_accepts_governance_decision(self, sample_message):
+        validator = MagicMock()
+        router_component = MagicMock()
+        router_component.route_and_deliver = AsyncMock(return_value=True)
+        registry_manager = MagicMock()
+        registry_manager._registry = {}
+        message_queue = MagicMock()
+        message_queue.put = AsyncMock()
+        handler = MessageHandler(
+            processor=MagicMock(),
+            router_component=router_component,
+            registry_manager=registry_manager,
+            governance=MagicMock(),
+            validator=validator,
+            message_queue=message_queue,
+            deliberation_queue=None,
+            metering_manager=MagicMock(),
+            kafka_bus=None,
+            metrics={},
+            config={},
+        )
+
+        success = await handler.finalize_message_delivery(
+            sample_message,
+            MessageGovernanceDecision(
+                result=ValidationResult(is_valid=True, decision="ALLOW"),
+                allow_delivery=True,
+            ),
+        )
+
+        assert success is True
+        router_component.route_and_deliver.assert_awaited_once()
+        validator.record_metrics_success.assert_called_once()
 
 
 # =============================================================================

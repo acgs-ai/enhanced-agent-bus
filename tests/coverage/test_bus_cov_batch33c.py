@@ -85,7 +85,7 @@ def _msgs(
 
 def _oai_adapter() -> OpenAIAdapter:
     with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-fake"}):
-        return OpenAIAdapter(model="gpt-5.2", api_key="sk-test-fake")
+        return OpenAIAdapter(model="gpt-5.5", api_key="sk-test-fake")
 
 
 def _mock_opa_client(policy_result=None):
@@ -101,7 +101,7 @@ def _mock_openai_response():
     mock_resp.model_dump.return_value = {
         "id": "chatcmpl-test",
         "object": "chat.completion",
-        "model": "gpt-5.2",
+        "model": "gpt-5.5",
         "choices": [
             {
                 "index": 0,
@@ -668,7 +668,7 @@ class TestOAIStreamErrors:
 class TestOAICostEstimation:
     def test_prefix_match_pricing(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-fake"}):
-            adapter = OpenAIAdapter(model="gpt-5.2-preview", api_key="sk-fake")
+            adapter = OpenAIAdapter(model="gpt-5.5-preview", api_key="sk-fake")
         cost = adapter.estimate_cost(1000, 500)
         assert cost.total_cost_usd > 0
 
@@ -718,13 +718,13 @@ class TestOAICountTokens:
 class TestOAIAddOptionalParams:
     def test_add_optional_params_empty(self):
         adapter = _oai_adapter()
-        params: dict[str, object] = {"model": "gpt-5.2"}
+        params: dict[str, object] = {"model": "gpt-5.5"}
         adapter._add_optional_params(params)
         assert "tools" not in params
 
     def test_add_optional_params_all(self):
         adapter = _oai_adapter()
-        params: dict[str, object] = {"model": "gpt-5.2"}
+        params: dict[str, object] = {"model": "gpt-5.5"}
         adapter._add_optional_params(
             params,
             tools=[{"type": "function"}],
@@ -1574,7 +1574,7 @@ class TestOpenAIClientErrors:
         """Cover ValueError when api_key is not set."""
         with patch.dict("os.environ", {}, clear=False):
             adapter = OpenAIAdapter(
-                config=OpenAIAdapterConfig(model="gpt-5.2"),
+                config=OpenAIAdapterConfig(model="gpt-5.5"),
                 api_key=None,
             )
             adapter.api_key = None
@@ -1587,7 +1587,7 @@ class TestOpenAIClientErrors:
         """Cover ValueError when api_key is not set for async client."""
         with patch.dict("os.environ", {}, clear=False):
             adapter = OpenAIAdapter(
-                config=OpenAIAdapterConfig(model="gpt-5.2"),
+                config=OpenAIAdapterConfig(model="gpt-5.5"),
                 api_key=None,
             )
             adapter.api_key = None
@@ -1795,7 +1795,7 @@ class TestOpenAIEstimateCostBranches:
     """Cover estimate_cost edge cases."""
 
     def test_estimate_cost_unknown_model(self):
-        """Cover the fallback to gpt-5.2 pricing."""
+        """Cover the fallback to gpt-5.5 pricing."""
         adapter = _oai_adapter()
         adapter.model = "future-gpt-99"
         cost = adapter.estimate_cost(1000, 500)

@@ -597,9 +597,9 @@ class CapabilityRegistry:
             ),
             # Azure OpenAI
             ProviderCapabilityProfile(
-                provider_id="azure-gpt-5-4",
-                model_id="gpt-5.4",
-                display_name="GPT-5.4 (Azure)",
+                provider_id="azure-gpt-5-5",
+                model_id="gpt-5.5",
+                display_name="GPT-5.5 (Azure)",
                 provider_type="azure",
                 context_length=400000,
                 max_output_tokens=16384,

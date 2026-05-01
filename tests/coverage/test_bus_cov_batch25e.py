@@ -472,7 +472,7 @@ class TestLLMAssistantInit:
 
         assistant = LLMAssistant(api_key=None)
         # Without langchain or valid key, llm may be None or mock
-        assert assistant.model_name == "gpt-5.4"
+        assert assistant.model_name == "gpt-5.5"
 
 
 class TestLLMAssistantFallbackAnalysis:

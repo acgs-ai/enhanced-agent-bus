@@ -175,7 +175,7 @@ class BaseAdapterConfig(BaseModel):
     )
     model: str = Field(
         ...,
-        description="Model identifier (e.g., 'gpt-5.4', 'claude-sonnet-4-6')",
+        description="Model identifier (e.g., 'gpt-5.5', 'claude-sonnet-4-6')",
     )
     api_key: SecretStr | None = Field(
         default=None,
@@ -289,7 +289,7 @@ class OpenAIAdapterConfig(BaseAdapterConfig):
     @classmethod
     def from_environment(
         cls,
-        model: str = "gpt-5.4",
+        model: str = "gpt-5.5",
         **kwargs: object,
     ) -> "OpenAIAdapterConfig":
         """Create config from environment variables.
@@ -410,7 +410,7 @@ class AzureOpenAIAdapterConfig(BaseAdapterConfig):
     def from_environment(
         cls,
         deployment_name: str,
-        model: str = "gpt-5.4",
+        model: str = "gpt-5.5",
         **kwargs: object,
     ) -> "AzureOpenAIAdapterConfig":
         """Create config from environment variables.

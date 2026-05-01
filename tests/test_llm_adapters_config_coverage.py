@@ -428,7 +428,7 @@ class TestOpenAIAdapterConfig:
         assert cfg.organization is None
         assert cfg.rate_limit.requests_per_minute == 60
         assert cfg.rate_limit.tokens_per_minute == 90000
-        assert cfg.model == "gpt-5.4"
+        assert cfg.model == "gpt-5.5"
 
     def test_from_environment_with_env_vars(self):
         env = {
@@ -452,7 +452,7 @@ class TestOpenAIAdapterConfig:
             for k in ["OPENAI_API_KEY", "OPENAI_API_BASE", "OPENAI_ORGANIZATION"]:
                 os.environ.pop(k, None)
             cfg = OpenAIAdapterConfig.from_environment()
-        assert cfg.model == "gpt-5.4"
+        assert cfg.model == "gpt-5.5"
 
     def test_from_environment_kwargs_override(self):
         with patch.dict(os.environ, {}, clear=False):

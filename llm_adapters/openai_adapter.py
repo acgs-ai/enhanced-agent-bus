@@ -113,9 +113,7 @@ class OpenAIAdapter(BaseLLMAdapter):
     # Updated as of March 2026
     MODEL_PRICING: ClassVar[dict[str, dict[str, float]]] = {
         # Current generation (GPT-5.x)
-        "gpt-5.4": {"prompt": 2.00, "completion": 16.00},
-        "gpt-5.3": {"prompt": 1.75, "completion": 14.00},
-        "gpt-5.2": {"prompt": 1.75, "completion": 14.00},
+        "gpt-5.5": {"prompt": 2.00, "completion": 16.00},
         "gpt-5.1": {"prompt": 1.25, "completion": 10.00},
         "gpt-5": {"prompt": 1.25, "completion": 10.00},
         "gpt-5-mini": {"prompt": 0.25, "completion": 2.00},
@@ -157,7 +155,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         # Create default config if not provided
         if config is None:
             if model is None:
-                model = "gpt-5.4"
+                model = "gpt-5.5"
             config = OpenAIAdapterConfig.from_environment(model=model, **kwargs)
 
         # Initialize base adapter
@@ -628,10 +626,10 @@ class OpenAIAdapter(BaseLLMAdapter):
                 pricing = model_pricing
                 break
 
-        # Default to GPT-5.2 pricing if model not found
+        # Default to GPT-5.5 pricing if model not found
         if pricing is None:
-            logger.warning(f"Pricing not found for model {self.model}, using GPT-5.4 pricing")
-            pricing = self.MODEL_PRICING["gpt-5.4"]
+            logger.warning(f"Pricing not found for model {self.model}, using GPT-5.5 pricing")
+            pricing = self.MODEL_PRICING["gpt-5.5"]
 
         # Calculate costs (pricing is per 1K tokens)
         prompt_cost = (prompt_tokens / 1000.0) * pricing["prompt"]

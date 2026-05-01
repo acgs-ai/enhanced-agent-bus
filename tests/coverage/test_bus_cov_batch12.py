@@ -842,12 +842,12 @@ class TestOpenClawAdapterInit:
             OpenClawAdapterConfig,
             "from_environment",
             return_value=OpenClawAdapterConfig(
-                model="openai/gpt-5.2",
+                model="openai/gpt-5.5",
                 api_base="http://127.0.0.1:18790",
             ),
         ):
-            adapter = OpenClawAdapter(model="openai/gpt-5.2")
-            assert adapter.model == "openai/gpt-5.2"
+            adapter = OpenClawAdapter(model="openai/gpt-5.5")
+            assert adapter.model == "openai/gpt-5.5"
 
 
 class TestOpenClawAdapterPrepareMessages:

@@ -330,7 +330,7 @@ class BaseLLMAdapter(ABC):
         """Initialize the adapter.
 
         Args:
-            model: Model identifier (e.g., "gpt-5.4", "claude-sonnet-4-6")
+            model: Model identifier (e.g., "gpt-5.5", "claude-sonnet-4-6")
             api_key: API key for authentication (optional, can use env vars)
             retry_config: Configuration for retry logic
             constitutional_hash: Constitutional hash for compliance validation
