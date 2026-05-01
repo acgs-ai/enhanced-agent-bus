@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 if TYPE_CHECKING:
@@ -31,6 +32,17 @@ if TYPE_CHECKING:
     from .validation import MessageValidator
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class MessageGovernanceDecision:
+    """Delivery-facing governance decision derived from validation results.
+
+    Constitutional Hash: 608508a9bd224290
+    """
+
+    result: ValidationResult
+    allow_delivery: bool
 
 
 class MessageHandler:
@@ -118,8 +130,16 @@ class MessageHandler:
             This graceful degradation ensures system availability while
             maintaining constitutional compliance through prior validation.
         """
+        return (await self.decide_message_governance(msg)).result
+
+    async def decide_message_governance(self, msg: AgentMessage) -> MessageGovernanceDecision:
+        """Produce a delivery-facing governance decision for a message.
+
+        Separates the governance decision from subsequent routing/delivery while
+        preserving the existing ValidationResult contract for compatibility.
+        """
         try:
-            return await self._processor.process(msg)
+            result = await self._processor.process(msg)
         except Exception as e:
             logger.warning(f"Processor fallback activated: {e}")
             metadata = msg.metadata if isinstance(getattr(msg, "metadata", None), dict) else {}
@@ -130,7 +150,7 @@ class MessageHandler:
                 or metadata.get("independent_validator_id")
             )
             if not has_explicit_prevalidation:
-                return ValidationResult(
+                result = ValidationResult(
                     is_valid=False,
                     errors=["Processor fallback denied: message lacks explicit prevalidation"],
                     metadata={"governance_mode": "DEGRADED", "fallback_reason": str(e)},
@@ -138,17 +158,33 @@ class MessageHandler:
                     status=MessageStatus.FAILED,
                     constitutional_hash=CONSTITUTIONAL_HASH,
                 )
-            return ValidationResult(
+                return self._build_governance_decision(result)
+            result = ValidationResult(
                 is_valid=True,
                 metadata={"governance_mode": "DEGRADED", "fallback_reason": str(e)},
                 decision="ALLOW",
                 status=MessageStatus.VALIDATED,
                 constitutional_hash=CONSTITUTIONAL_HASH,
             )
+        return self._build_governance_decision(result)
 
-    async def finalize_message_delivery(self, msg: AgentMessage, result: ValidationResult) -> bool:
+    @staticmethod
+    def _build_governance_decision(result: ValidationResult) -> MessageGovernanceDecision:
+        """Convert a ValidationResult into a delivery-facing governance decision."""
+        return MessageGovernanceDecision(result=result, allow_delivery=bool(result.is_valid))
+
+    async def finalize_message_delivery(
+        self,
+        msg: AgentMessage,
+        result: ValidationResult | MessageGovernanceDecision,
+    ) -> bool:
         """Handle routing and delivery of validated message."""
-        if result.is_valid:
+        decision = (
+            result
+            if isinstance(result, MessageGovernanceDecision)
+            else self._build_governance_decision(result)
+        )
+        if decision.allow_delivery:
             success = await self.route_and_deliver(msg)
             if success:
                 self._validator.record_metrics_success()

@@ -103,7 +103,7 @@ class TestLLMAssistantInitialization:
         """Test default initialization without API key."""
         assistant = LLMAssistant()
 
-        assert assistant.model_name == "gpt-5.4"
+        assert assistant.model_name == "gpt-5.5"
         # LLM may or may not be initialized depending on environment
 
     def test_custom_model_name(self):

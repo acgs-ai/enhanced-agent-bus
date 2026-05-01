@@ -46,7 +46,7 @@ from enhanced_agent_bus.llm_adapters.config import (
 
 def _azure_config(**overrides: Any) -> AzureOpenAIAdapterConfig:
     defaults = {
-        "model": "gpt-5.2",
+        "model": "gpt-5.5",
         "deployment_name": "my-deployment",
         "azure_endpoint": "https://test.openai.azure.com",
         "api_version": "2024-02-15-preview",
@@ -397,7 +397,7 @@ class TestAzureOpenAIAdapterTiktoken:
         try:
             encoder = adapter._get_tiktoken_encoder()
             assert encoder is not None
-            mock_tiktoken.encoding_for_model.assert_called_once_with("gpt-5.2")
+            mock_tiktoken.encoding_for_model.assert_called_once_with("gpt-5.5")
         finally:
             if original is not None:
                 sys.modules["tiktoken"] = original
@@ -617,7 +617,7 @@ class TestAzureOpenAIAdapterMiscLines:
 
         llm_response = LLMResponse(
             content="test",
-            metadata=CompletionMetadata(model="gpt-5.2", provider="azure_openai"),
+            metadata=CompletionMetadata(model="gpt-5.5", provider="azure_openai"),
         )
         adapter._extract_content_filter_results(response, llm_response)
 
@@ -641,7 +641,7 @@ class TestAzureOpenAIAdapterMiscLines:
             model=None,
             api_key="test-key",
         )
-        assert adapter.model == "gpt-5.4"
+        assert adapter.model == "gpt-5.5"
 
 
 # ---------------------------------------------------------------------------

@@ -982,7 +982,7 @@ class TestLLMAssistantInit:
 
     def test_init_without_langchain(self):
         assistant = LLMAssistant()
-        assert assistant.model_name == "gpt-5.4"
+        assert assistant.model_name == "gpt-5.5"
 
     def test_get_llm_assistant_singleton(self):
         reset_llm_assistant()

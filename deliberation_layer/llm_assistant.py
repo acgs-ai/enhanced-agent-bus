@@ -176,7 +176,7 @@ ChatOpenAI: Any = cast(Any, _ChatOpenAI)
 class LLMAssistant:
     """LLM-powered assistant for deliberation decision support."""
 
-    def __init__(self, api_key: str | None = None, model_name: str = "gpt-5.4") -> None:
+    def __init__(self, api_key: str | None = None, model_name: str = "gpt-5.5") -> None:
         self.model_name = model_name
         self.llm: Any | None = None
         if LANGCHAIN_AVAILABLE:
