@@ -29,6 +29,7 @@ jobs:
         run: python -m ruff check .
       - name: Test
         env:
+          EAB_PROFILE: dev
           OPENAI_API_KEY: test-key-for-unit-tests
           ANTHROPIC_API_KEY: test-key-for-unit-tests
           ACGS2_SERVICE_SECRET: test-secret-for-unit-tests
@@ -42,6 +43,16 @@ jobs:
             --import-mode=importlib \
             -m "not slow and not benchmark and not e2e" \
             -v --tb=short
+      - name: Critical path governance tests
+        env:
+          EAB_PROFILE: dev
+          OPENAI_API_KEY: test-key-for-unit-tests
+          ANTHROPIC_API_KEY: test-key-for-unit-tests
+          ACGS2_SERVICE_SECRET: test-secret-for-unit-tests
+        run: |
+          python -m pytest tests/critical_path \
+            --import-mode=importlib \
+            -q --tb=short
 
   package:
     runs-on: ubuntu-latest

@@ -84,6 +84,15 @@ from .rate_limiting import (
     limiter,
     require_rate_limiting_dependencies,
 )
+from .message_lifecycle import InMemoryMessageStatusStore
+from .runtime_profile import (
+    allow_fallback,
+    is_dev,
+    is_demo,
+    is_prod,
+    require_auth_secret,
+    require_prod_dependency,
+)
 
 _API_APP_OPERATION_ERRORS = (
     RuntimeError,
@@ -180,8 +189,7 @@ def _register_builtin_workflows(executor: DurableWorkflowExecutor) -> DurableWor
 
 def _is_development_like_environment() -> bool:
     """Return whether current environment is development-like."""
-    environment = os.environ.get("ENVIRONMENT", "").lower()
-    return environment in ("development", "dev", "test", "testing", "ci")
+    return is_dev()
 
 
 def _build_governance_redis_client() -> Any:
@@ -204,7 +212,7 @@ def _initialize_agent_bus_state(
         return bus
     except _API_APP_OPERATION_ERRORS as e:
         logger.error(f"Failed to initialize agent bus: {e}")
-        if _is_development_like_environment():
+        if allow_fallback("agent_bus_mock"):
             environment = os.environ.get("ENVIRONMENT", "").lower()
             logger.warning(
                 f"MessageProcessor not available, using mock mode (ENVIRONMENT={environment})",
@@ -228,33 +236,38 @@ async def _initialize_workflow_components(
 
         repository: Any = PostgresWorkflowRepository(dsn=normalized_dsn)
         await repository.initialize()
+        pool = getattr(repository, "_pool", None)
+        if pool is not None:
+            async with pool.acquire() as conn:
+                await conn.execute("SELECT 1")
         executor = _register_builtin_workflows(DurableWorkflowExecutor(repository=repository))
         app.state.workflow_executor = executor
         app.state.workflow_repository = repository
         logger.info("Durable Workflow Executor initialized successfully")
         return executor, repository
     except ImportError:
-        if _is_development_like_environment():
+        if allow_fallback("workflow_repository"):
             logger.warning(
-                "asyncpg not installed, using in-memory Workflow Executor in development"
+                "asyncpg not installed, using in-memory Workflow Executor outside production"
             )
             repository = InMemoryWorkflowRepository()
             executor = _register_builtin_workflows(DurableWorkflowExecutor(repository=repository))
             app.state.workflow_executor = executor
             app.state.workflow_repository = repository
             return executor, None
-        logger.warning("asyncpg not installed, skipping Workflow Executor initialization")
+        raise RuntimeError("asyncpg is required for production workflow persistence") from None
     except Exception as e:
-        if _is_development_like_environment():
+        if allow_fallback("workflow_repository"):
             logger.warning(
                 "Workflow repository unavailable, using in-memory Workflow Executor in "
-                f"development: {e}"
+                f"non-production profile: {e}"
             )
             repository = InMemoryWorkflowRepository()
             executor = _register_builtin_workflows(DurableWorkflowExecutor(repository=repository))
             app.state.workflow_executor = executor
             return executor, None
         logger.error(f"Failed to initialize Durable Workflow Executor: {e}")
+        raise
 
     return None, None
 
@@ -453,6 +466,74 @@ def _ensure_governance_state(
         _configure_in_memory_governance_state(application)
 
 
+async def _verify_governance_redis_ready(application: FastAPI) -> None:
+    """Verify the shared Redis governance backend is reachable in production."""
+    client = getattr(application.state, "governance_redis_client", None)
+    require_prod_dependency("governance_redis_client", client is not None)
+    if client is None:
+        return
+
+    try:
+        ping_result = client.ping()
+        if inspect.isawaitable(ping_result):
+            await ping_result
+    except Exception as e:
+        if is_prod():
+            raise RuntimeError("Production governance Redis readiness check failed") from e
+        logger.warning(f"Governance Redis readiness check failed outside production: {e}")
+
+
+async def _verify_policy_backend_ready() -> None:
+    """Verify configured policy backend availability."""
+    registry_url = os.environ.get("POLICY_REGISTRY_URL") or os.environ.get(
+        "EAB_POLICY_REGISTRY_URL"
+    )
+    required = is_prod() or os.environ.get("EAB_POLICY_BACKEND_REQUIRED") == "1"
+    if registry_url and "mock" in registry_url.lower():
+        require_prod_dependency("policy_backend_non_mock", False)
+    if not required and not registry_url:
+        return
+    require_prod_dependency("policy_backend_url", registry_url)
+
+    from ..policy_client import PolicyRegistryClient
+
+    client = PolicyRegistryClient(registry_url=registry_url or "http://localhost:8000")
+    try:
+        health = await client.health_check()
+    finally:
+        await client.close()
+    if str(health.get("status", "")).lower() not in {"healthy", "ready", "ok"}:
+        require_prod_dependency("policy_backend_health", False)
+
+
+async def _verify_audit_backend_ready() -> None:
+    """Verify configured audit backend availability."""
+    service_url = os.environ.get("AUDIT_SERVICE_URL") or os.environ.get("EAB_AUDIT_SERVICE_URL")
+    required = is_prod() or os.environ.get("EAB_AUDIT_BACKEND_REQUIRED") == "1"
+    if not required and not service_url:
+        return
+    require_prod_dependency("audit_backend_url", service_url)
+
+    from ..audit_client import AuditClient, AuditClientConfig
+
+    client = AuditClient(config=AuditClientConfig(service_url=service_url or ""))
+    try:
+        health = await client.health_check()
+    finally:
+        await client.close()
+    if str(health.get("status", "")).lower() != "healthy":
+        require_prod_dependency("audit_backend_health", False)
+
+
+async def _verify_startup_dependencies(application: FastAPI) -> None:
+    """Run production fail-closed startup dependency checks."""
+    require_auth_secret()
+    await _verify_governance_redis_ready(application)
+    if is_prod() or is_demo():
+        await _verify_policy_backend_ready()
+        await _verify_audit_backend_ready()
+
+
 def _attach_pqc_postgres_fallback(
     application: FastAPI,
     repository: Any,
@@ -475,12 +556,14 @@ async def _startup_runtime(app: FastAPI) -> None:
 
     _ensure_governance_state(
         app,
-        allow_in_memory_fallback=_is_development_like_environment(),
+        allow_in_memory_fallback=allow_fallback("governance_state"),
     )
+    await _verify_governance_redis_ready(app)
     workflow_executor, workflow_repository = await _initialize_workflow_components(app)
     bus = _initialize_agent_bus_state(workflow_repository=workflow_repository)
     _bind_runtime_state(app, bus=bus)
     _attach_pqc_postgres_fallback(app, workflow_repository)
+    await _verify_startup_dependencies(app)
     await _initialize_session_manager_if_available()
 
 
@@ -497,9 +580,11 @@ def _configure_application_state(application: FastAPI) -> None:
     """Initialize non-runtime FastAPI application state."""
     application.state.limiter = limiter
     application.state.failed_tasks = []
+    if allow_fallback("message_status_store"):
+        application.state.message_status_store = InMemoryMessageStatusStore()
     _ensure_governance_state(
         application,
-        allow_in_memory_fallback=True,
+        allow_in_memory_fallback=allow_fallback("governance_state"),
     )
 
 

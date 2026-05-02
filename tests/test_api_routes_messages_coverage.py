@@ -323,30 +323,34 @@ class TestRecordFailedBackgroundTask:
 
 
 class TestIsDevelopmentEnvironment:
-    """_ENVIRONMENT is captured at import time; patch the module attr directly."""
+    """Runtime profile controls development-only behavior."""
 
     def test_development_env_returns_true(self, monkeypatch) -> None:
         import enhanced_agent_bus.api.routes.messages as _m
 
-        monkeypatch.setattr(_m, "_ENVIRONMENT", "development")
+        monkeypatch.setattr(_m, "_ENVIRONMENT", "")
+        monkeypatch.setenv("EAB_PROFILE", "dev")
         assert _is_development_environment() is True
 
     def test_production_env_returns_false(self, monkeypatch) -> None:
         import enhanced_agent_bus.api.routes.messages as _m
 
-        monkeypatch.setattr(_m, "_ENVIRONMENT", "production")
+        monkeypatch.setattr(_m, "_ENVIRONMENT", "")
+        monkeypatch.setenv("EAB_PROFILE", "prod")
         assert _is_development_environment() is False
 
     def test_test_env_returns_true(self, monkeypatch) -> None:
         import enhanced_agent_bus.api.routes.messages as _m
 
-        monkeypatch.setattr(_m, "_ENVIRONMENT", "test")
+        monkeypatch.setattr(_m, "_ENVIRONMENT", "")
+        monkeypatch.setenv("EAB_PROFILE", "dev")
         assert _is_development_environment() is True
 
     def test_ci_env_returns_true(self, monkeypatch) -> None:
         import enhanced_agent_bus.api.routes.messages as _m
 
-        monkeypatch.setattr(_m, "_ENVIRONMENT", "ci")
+        monkeypatch.setattr(_m, "_ENVIRONMENT", "")
+        monkeypatch.setenv("EAB_PROFILE", "dev")
         assert _is_development_environment() is True
 
 
@@ -506,7 +510,7 @@ class TestDevelopmentStatusResponse:
         resp = _development_status_response("msg-123", "tenant-abc")
         assert resp["message_id"] == "msg-123"
         assert resp["tenant_id"] == "tenant-abc"
-        assert resp["status"] == "processed"
+        assert resp["status"] == "accepted_for_processing"
         assert "timestamp" in resp
         assert "details" in resp
 

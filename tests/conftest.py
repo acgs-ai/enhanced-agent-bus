@@ -7,6 +7,7 @@ Provides common fixtures for all test modules.
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -69,7 +70,26 @@ def _patch_optional(pkg_name: str, flat_name: str | None = None) -> Any | None:
 
 
 # ── Core module imports (required) ──────────────────────────────────────────
-_PKG = "packages.enhanced_agent_bus"
+_THIS_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _qualified_test_package() -> str:
+    """Use parent-repo import path only when it resolves to this checkout."""
+
+    imported_package = sys.modules.get("enhanced_agent_bus")
+    imported_path = Path(getattr(imported_package, "__file__", "")).resolve()
+    if imported_path.parent == _THIS_PACKAGE_ROOT:
+        return "enhanced_agent_bus"
+
+    package_alias = sys.modules.get("packages.enhanced_agent_bus")
+    alias_path = Path(getattr(package_alias, "__file__", "")).resolve()
+    if alias_path.parent == _THIS_PACKAGE_ROOT:
+        return "packages.enhanced_agent_bus"
+
+    return "enhanced_agent_bus"
+
+
+_PKG = _qualified_test_package()
 
 
 import enhanced_agent_bus.audit_client as _audit_client  # noqa: E402

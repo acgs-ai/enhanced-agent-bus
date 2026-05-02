@@ -7,9 +7,8 @@ This module provides message sending and status endpoints.
 
 from __future__ import annotations
 
-import os
 import re
-from typing import TYPE_CHECKING, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, cast
 
 from fastapi import (
     APIRouter,
@@ -18,6 +17,7 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Query,
     Request,
     status,
 )
@@ -41,9 +41,13 @@ from ...api_models import (
     ServiceUnavailableResponse,
 )
 from ..dependencies import get_agent_bus
+from ..message_lifecycle import (
+    InMemoryMessageStatusStore,
+    MessageLifecycleState,
+)
 from ..middleware import logger
 from ..rate_limiting import limiter
-from ._tenant_auth import DEV_ENVIRONMENTS
+from ..runtime_profile import is_dev, is_prod
 
 router = APIRouter()
 MESSAGE_ID_PATTERN = re.compile(
@@ -52,6 +56,13 @@ MESSAGE_ID_PATTERN = re.compile(
 )
 DEV_STATUS_TIMESTAMP = "2024-01-01T00:00:00Z"
 DEV_STATUS_NOTE = "Development mode - simplified response"
+_ENVIRONMENT = ""
+_DEV_ENVIRONMENT_NAMES = frozenset(("development", "dev", "test", "testing", "ci"))
+SPOOFABLE_VALIDATOR_HEADERS = (
+    "X-Validated-By-Agent",
+    "X-Independent-Validator-ID",
+    "X-Validation-Stage",
+)
 
 
 class ProcessResultProtocol(Protocol):
@@ -81,9 +92,6 @@ MESSAGE_HANDLERS: dict[MessageTypeEnum, str] = {
     MessageTypeEnum.TASK_RESPONSE: "process_task_response",
     MessageTypeEnum.AUDIT_LOG: "process_audit_log",
 }
-
-_ENVIRONMENT = os.environ.get("ENVIRONMENT", "").lower()
-
 
 def _resolve_message_type(raw_message_type: object) -> MessageType:
     """Resolve API message type to internal MessageType with safe fallback."""
@@ -143,6 +151,33 @@ def _merge_validator_headers_into_metadata(
     return metadata
 
 
+def _reject_spoofable_validator_headers_in_prod(
+    validated_by_agent: str | None,
+    independent_validator_id: str | None,
+    validation_stage: str | None,
+) -> None:
+    """Reject caller-supplied validator metadata in production."""
+    if not is_prod():
+        return
+    supplied = [
+        name
+        for name, value in zip(
+            SPOOFABLE_VALIDATOR_HEADERS,
+            (validated_by_agent, independent_validator_id, validation_stage),
+            strict=True,
+        )
+        if value and value.strip()
+    ]
+    if supplied:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Independent validation metadata must be supplied as a "
+                f"verifiable receipt in production; rejected headers: {', '.join(supplied)}"
+            ),
+        )
+
+
 def _resolve_impact_score(metadata: JSONDict) -> float | None:
     """Extract optional impact score from metadata when provided."""
     raw_score = metadata.get("impact_score")
@@ -169,7 +204,9 @@ def _record_failed_background_task(
 
 def _is_development_environment() -> bool:
     """Return True when endpoint can use development-only behavior."""
-    return _ENVIRONMENT in DEV_ENVIRONMENTS
+    if _ENVIRONMENT:
+        return _ENVIRONMENT in _DEV_ENVIRONMENT_NAMES
+    return is_dev()
 
 
 def _validate_tenant_consistency(message_request: MessageRequest, tenant_id: str) -> None:
@@ -237,11 +274,36 @@ async def _process_message_async(
 ) -> None:
     """Process queued message in background when real processor is available."""
     try:
+        _record_message_status(
+            app_state,
+            tenant_id=message.tenant_id,
+            message_id=message.message_id,
+            state=MessageLifecycleState.GOVERNANCE_PENDING,
+            details={"message_type": message.message_type.value},
+        )
         if isinstance(bus, dict):
             logger.warning("Agent bus is in mock mode, skipping real processing")
+            _record_message_status(
+                app_state,
+                tenant_id=message.tenant_id,
+                message_id=message.message_id,
+                state=MessageLifecycleState.GOVERNANCE_APPROVED,
+                details={"mode": "mock"},
+            )
             return
 
         result = await bus.process(message)
+        _record_message_status(
+            app_state,
+            tenant_id=message.tenant_id,
+            message_id=message.message_id,
+            state=(
+                MessageLifecycleState.GOVERNANCE_APPROVED
+                if result.is_valid
+                else MessageLifecycleState.GOVERNANCE_REJECTED
+            ),
+            details={"is_valid": result.is_valid},
+        )
         logger.info(
             f"Message {message.message_id} processed",
             extra={"is_valid": result.is_valid},
@@ -252,6 +314,39 @@ async def _process_message_async(
             exc_info=True,
         )
         _record_failed_background_task(message.message_id, e, app_state)
+        _record_message_status(
+            app_state,
+            tenant_id=message.tenant_id,
+            message_id=message.message_id,
+            state=MessageLifecycleState.FAILED,
+            details={"error": str(e)},
+        )
+
+
+def _get_message_status_store(app_state: object | None) -> InMemoryMessageStatusStore | None:
+    """Return the configured message status store when available."""
+    store = getattr(app_state, "message_status_store", None)
+    return store if isinstance(store, InMemoryMessageStatusStore) else None
+
+
+def _record_message_status(
+    app_state: object | None,
+    *,
+    tenant_id: str,
+    message_id: str,
+    state: MessageLifecycleState,
+    details: JSONDict | None = None,
+) -> None:
+    """Record status transitions when the runtime has a status store."""
+    store = _get_message_status_store(app_state)
+    if store is None:
+        return
+    store.record(
+        tenant_id=tenant_id,
+        message_id=message_id,
+        state=state,
+        details=dict(details or {}),
+    )
 
 
 def _development_status_response(message_id: str, tenant_id: str) -> JSONDict:
@@ -259,10 +354,26 @@ def _development_status_response(message_id: str, tenant_id: str) -> JSONDict:
     return {
         "message_id": message_id,
         "tenant_id": tenant_id,
-        "status": "processed",
+        "status": MessageLifecycleState.ACCEPTED_FOR_PROCESSING.value,
         "timestamp": DEV_STATUS_TIMESTAMP,
         "details": {"note": DEV_STATUS_NOTE},
     }
+
+
+async def _process_message_sync(
+    message: AgentMessage,
+    bus: MessageProcessorProtocol | dict[str, str],
+    app_state: object | None = None,
+) -> MessageLifecycleState:
+    """Process a message immediately and return the governance decision state."""
+    await _process_message_async(message, bus, app_state)
+    store = _get_message_status_store(app_state)
+    record = store.get(tenant_id=message.tenant_id, message_id=message.message_id) if store else None
+    if record is not None:
+        return record.state
+    if isinstance(bus, dict):
+        return MessageLifecycleState.GOVERNANCE_APPROVED
+    return MessageLifecycleState.FAILED
 
 
 @router.post(
@@ -275,6 +386,7 @@ async def send_message(
     request: Request,
     background_tasks: BackgroundTasks,
     message_request: MessageRequest = Body(...),
+    mode: Literal["async", "validate_and_route"] = Query(default="async"),
     session_id: str | None = Header(None, alias="X-Session-ID"),
     validated_by_agent: str | None = Header(None, alias="X-Validated-By-Agent"),
     independent_validator_id: str | None = Header(None, alias="X-Independent-Validator-ID"),
@@ -297,6 +409,11 @@ async def send_message(
     correlation_id = correlation_id_var.get()
 
     _validate_tenant_consistency(message_request, tenant_id)
+    _reject_spoofable_validator_headers_in_prod(
+        validated_by_agent,
+        independent_validator_id,
+        validation_stage,
+    )
 
     msg_type = _resolve_message_type(message_request.message_type)
     priority = _resolve_priority(message_request.priority)
@@ -317,16 +434,31 @@ async def send_message(
         priority,
         resolved_session_id,
     )
-    background_tasks.add_task(_process_message_async, msg, bus, request.app.state)
+    _record_message_status(
+        request.app.state,
+        tenant_id=tenant_id,
+        message_id=msg.message_id,
+        state=MessageLifecycleState.ACCEPTED_FOR_PROCESSING,
+        details={
+            "session_id": msg.conversation_id,
+            "message_type": message_type_value,
+        },
+    )
+    response_state = MessageLifecycleState.ACCEPTED_FOR_PROCESSING
+    if mode == "validate_and_route":
+        response_state = await _process_message_sync(msg, bus, request.app.state)
+    else:
+        background_tasks.add_task(_process_message_async, msg, bus, request.app.state)
 
     return MessageResponse(
         message_id=msg.message_id,
-        status=MessageStatusEnum.ACCEPTED,
+        status=MessageStatusEnum(response_state.value),
         timestamp=msg.created_at.isoformat(),
         correlation_id=correlation_id,
         details={
             "session_id": msg.conversation_id,
             "message_type": message_type_value,
+            "mode": mode,
         },
     )
 
@@ -351,6 +483,12 @@ async def send_message(
     summary="Get message status",
     tags=["Messages"],
 )
+@router.get(
+    "/api/v1/messages/{message_id}/status",
+    response_model=MessageResponse,
+    summary="Get message lifecycle status",
+    tags=["Messages"],
+)
 @limiter.limit("30/minute")
 async def get_message_status(
     request: Request,
@@ -362,6 +500,19 @@ async def get_message_status(
     tenant_id = user.tenant_id
     if not MESSAGE_ID_PATTERN.match(message_id):
         raise HTTPException(status_code=400, detail="Invalid message ID format")
+
+    store = _get_message_status_store(request.app.state)
+    if store is not None:
+        record = store.get(tenant_id=tenant_id, message_id=message_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+        return {
+            "message_id": record.message_id,
+            "status": record.state.value,
+            "timestamp": record.updated_at.isoformat(),
+            "details": record.details,
+            "correlation_id": correlation_id_var.get(),
+        }
 
     if not _is_development_environment():
         raise HTTPException(
