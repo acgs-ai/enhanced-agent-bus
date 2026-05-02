@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from fastapi import HTTPException, status
+
+from enhanced_agent_bus.api.runtime_profile import is_prod
+
 __all__ = [
     "UserClaims",
     "get_current_user",
@@ -46,15 +50,27 @@ else:
         async def get_current_user(
             credentials: HTTPAuthorizationCredentials | None = None,
         ) -> UserClaims:
+            if is_prod():
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication dependency unavailable in production",
+                )
             del credentials
             return UserClaims()
 
         async def require_auth(
             credentials: HTTPAuthorizationCredentials | None = None,
         ) -> UserClaims:
+            if is_prod():
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication dependency unavailable in production",
+                )
             del credentials
             return UserClaims()
 
         def verify_token(token: str) -> UserClaims:
+            if is_prod():
+                raise RuntimeError("Authentication dependency unavailable in production")
             del token
             return UserClaims()

@@ -20,7 +20,13 @@ _root_dir = os.path.dirname(os.path.abspath(__file__))
 # with the legacy src/acgs_lite/ copy and break acgs-lite test collection.
 _repo_root = Path(_root_dir).parents[1]
 _src_dir = _repo_root / "src"
-if str(_repo_root) not in sys.path:
+_parent_repo_bus_path = _repo_root / "packages" / "enhanced_agent_bus"
+try:
+    _parent_repo_layout_matches = _parent_repo_bus_path.resolve() == Path(_root_dir).resolve()
+except OSError:  # pragma: no cover - defensive
+    _parent_repo_layout_matches = False
+
+if _parent_repo_layout_matches and str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 if _root_dir not in sys.path:
     sys.path.insert(0, _root_dir)
@@ -32,7 +38,11 @@ if _parent_dir not in sys.path:
 
 # Set PYTHONPATH environment variable for subprocesses
 os.environ["PYTHONPATH"] = (
-    f"{_repo_root}:{_src_dir}:{_parent_dir}:{os.environ.get('PYTHONPATH', '')}"
+    (
+        f"{_repo_root}:{_src_dir}:{_parent_dir}:{os.environ.get('PYTHONPATH', '')}"
+        if _parent_repo_layout_matches
+        else f"{_parent_dir}:{os.environ.get('PYTHONPATH', '')}"
+    )
 )
 
 

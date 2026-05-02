@@ -4,9 +4,18 @@
 [![Python](https://img.shields.io/pypi/pyversions/enhanced-agent-bus)](https://pypi.org/project/enhanced-agent-bus/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-**ACGS-2 Enhanced Agent Bus — high-performance multi-tenant agent communication infrastructure with constitutional compliance.**
+**ACGS-2 Enhanced Agent Bus — governed multi-tenant agent communication infrastructure designed to support constitutional policy enforcement and auditability.**
 
-`enhanced-agent-bus` is a **FastAPI service**, not an importable library. Run it with `uvicorn`; agents and governance dashboards talk to it over HTTP. It provides agent registration, constitutional message routing, MACI enforcement, durable workflow execution, human-in-the-loop deliberation, Z3 formal verification, rate limiting, and Prometheus metrics.
+`enhanced-agent-bus` is a **FastAPI service**, not an importable library. Run it with `uvicorn`; agents and governance dashboards talk to it over HTTP. It provides agent registration, governed message routing, MACI enforcement, durable workflow execution, human-in-the-loop deliberation, Z3 formal verification, rate limiting, and Prometheus metrics.
+
+Important production semantics:
+
+- `202 Accepted` from `POST /api/v1/messages` means **accepted for processing**, not governance-approved.
+- Use `GET /api/v1/messages/{message_id}/status` to observe `governance_pending`, `governance_approved`, or `governance_rejected`.
+- `POST /api/v1/messages?mode=validate_and_route` runs the validation path synchronously and returns the immediate governance decision when the configured processor can decide it.
+- Production mode requires external durable state, authentication secrets, Redis-backed governance state, policy backend health, and audit backend health.
+- Development fallback behavior is not production behavior.
+- Independent validation requires verifiable receipts in production; spoofable validator headers are rejected.
 
 > **Version:** 3.0.2
 
@@ -29,6 +38,14 @@ uvicorn enhanced_agent_bus.api.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 Requires Python 3.11+. Redis is required for production deployments (rate limiting, deliberation, MACI record storage).
+
+Select the runtime profile explicitly:
+
+```bash
+export EAB_PROFILE=dev    # local development and tests
+export EAB_PROFILE=demo   # controlled demos with visible fallback behavior
+export EAB_PROFILE=prod   # fail-closed production profile
+```
 
 Minimal auth-related environment example:
 
@@ -78,8 +95,10 @@ The service mounts 14 core routers:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/` | Send a message to the agent bus for constitutional validation and routing |
-| `GET` | `/messages/{message_id}` | Retrieve a message by ID |
+| `POST` | `/api/v1/messages` | Accept a message for governed processing (`202` is not governance approval) |
+| `POST` | `/api/v1/messages?mode=validate_and_route` | Synchronously validate and return the immediate governance decision |
+| `GET` | `/api/v1/messages/{message_id}/status` | Retrieve tenant-bound message lifecycle status |
+| `GET` | `/api/v1/messages/{message_id}` | Compatibility status endpoint |
 
 ### Governance & MACI
 
@@ -146,7 +165,7 @@ Optional routers (registered when dependencies are available):
 
 ### Core message bus (`agent_bus.py`)
 
-`EnhancedAgentBus` manages agent registration, message routing, and constitutional validation. Every message is validated against the loaded constitutional rules before delivery.
+`EnhancedAgentBus` manages agent registration, message routing, and constitutional validation. The runtime is designed so messages are traceable, tenant-bound, policy-bound, and auditable before governed action is taken. Deployment operators must use the `prod` profile and external dependencies for production-grade enforcement.
 
 ### Deliberation layer (`deliberation_layer/`)
 
