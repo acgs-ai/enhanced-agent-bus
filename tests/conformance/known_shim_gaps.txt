@@ -1,0 +1,160 @@
+# `_compat` shim obligations that are not satisfied in the standalone distribution.
+#
+# Baseline recorded on main: 56 shim modules targeted by import
+# sites across the repo, 23 fully satisfying their callers, 33 with gaps.
+# 145 individual obligations unmet.
+#
+# Format: <shim module> :: <name> :: <gap kind>[ :: detail]
+#   missing-name       the shim does not export a name a caller imports
+#   missing-attr:<a>   the exported object lacks an attribute callers access
+#   not-callable       callers call the name; the exported object is not callable
+#   unimportable       the shim module does not exist at all
+#
+# This file is a ratchet. Remediation phases DELETE lines from it;
+# tests/conformance/test_compat_contracts.py fails on a new gap and also fails
+# when a listed gap is closed but not deleted here.
+enhanced_agent_bus._compat.agent_workflow_metrics :: get_agent_workflow_metrics_collector :: missing-name
+enhanced_agent_bus._compat.agent_workflow_metrics :: reset_agent_workflow_metrics_collector :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: DEFAULT_SCOPES :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCAuthenticationError :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCConfigurationError :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCError :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCProviderConfig :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCProviderError :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCTokenError :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCTokenResponse :: missing-name
+enhanced_agent_bus._compat.auth.oidc_handler :: OIDCUserInfo :: missing-name
+enhanced_agent_bus._compat.cache :: workflow_cache :: missing-attr:get_step_result :: got function
+enhanced_agent_bus._compat.cache :: workflow_cache :: missing-attr:invalidate_workflow_state :: got function
+enhanced_agent_bus._compat.cache :: workflow_cache :: missing-attr:set_step_result :: got function
+enhanced_agent_bus._compat.cache_warming :: <module> :: unimportable :: ModuleNotFoundError: No module named 'enhanced_agent_bus._compat.cache_warming'
+enhanced_agent_bus._compat.circuit_breaker :: CircuitBreakerRegistry :: missing-name
+enhanced_agent_bus._compat.config :: settings :: missing-name
+enhanced_agent_bus._compat.config.governance :: CircuitBreakerSettings :: missing-name
+enhanced_agent_bus._compat.config.governance :: HAS_PYDANTIC_SETTINGS :: missing-name
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:agent_count_high_threshold :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:agent_count_low_threshold :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:confidence_fallback :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:conservative_default_score :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:high_impact_threshold :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:medium_impact_threshold :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:min_training_samples :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:msg_length_high_threshold :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:msg_length_low_threshold :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:retrain_frequency :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:rf_max_depth :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:rf_n_estimators :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:rf_random_state :: got dict
+enhanced_agent_bus._compat.config.governance_constants :: IMPACT_SCORER_CONFIG :: missing-attr:training_window :: got dict
+enhanced_agent_bus._compat.config.infrastructure :: AISettings :: missing-name
+enhanced_agent_bus._compat.config.infrastructure :: BlockchainSettings :: missing-name
+enhanced_agent_bus._compat.config.infrastructure :: HAS_PYDANTIC_SETTINGS :: missing-name
+enhanced_agent_bus._compat.config.security :: AuditSettings :: missing-name
+enhanced_agent_bus._compat.config.security :: HAS_PYDANTIC_SETTINGS :: missing-name
+enhanced_agent_bus._compat.config.security :: SSOSettings :: missing-name
+enhanced_agent_bus._compat.config.security :: VaultSettings :: missing-name
+enhanced_agent_bus._compat.crypto :: CryptoService :: missing-attr:issue_agent_token :: got type
+enhanced_agent_bus._compat.database.n1_middleware :: N1DetectionMiddleware :: missing-name
+enhanced_agent_bus._compat.database.n1_middleware :: after_cursor_execute :: missing-name
+enhanced_agent_bus._compat.database.n1_middleware :: attach_query_listeners :: missing-name
+enhanced_agent_bus._compat.database.n1_middleware :: before_cursor_execute :: missing-name
+enhanced_agent_bus._compat.database.session :: engine :: missing-attr:pool :: got NoneType
+enhanced_agent_bus._compat.database.utils :: BaseRepository :: missing-name
+enhanced_agent_bus._compat.database.utils :: BulkOperations :: missing-name
+enhanced_agent_bus._compat.database.utils :: Projection :: missing-name
+enhanced_agent_bus._compat.database.utils :: detect_n_plus_1 :: missing-name
+enhanced_agent_bus._compat.di_container :: DIContainer :: missing-attr:get :: got type
+enhanced_agent_bus._compat.di_container :: DIContainer :: missing-attr:reset :: got type
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: CounterfactualHint :: missing-name
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: DecisionExplanationV1 :: missing-name
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: EUAIActTransparencyInfo :: missing-name
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: ExplanationFactor :: missing-name
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: GovernanceDimension :: missing-name
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: PredictedOutcome :: missing-name
+enhanced_agent_bus._compat.event_schemas.decision_explanation :: create_decision_explanation :: missing-name
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:cache_warming_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:langgraph_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:maci_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:mamba_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:optimization_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:research_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:safla_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:swarm_enabled :: got dict
+enhanced_agent_bus._compat.feature_flags :: FEATURES :: missing-attr:workflow_evolution_enabled :: got dict
+enhanced_agent_bus._compat.metrics._registry :: _METRICS_CACHE :: missing-name
+enhanced_agent_bus._compat.metrics._registry :: _find_existing_metric :: missing-name
+enhanced_agent_bus._compat.metrics._registry :: _get_or_create_info :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: CONTENT_TYPE_LATEST :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: Counter :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: Gauge :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: Histogram :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: Info :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: PROMETHEUS_AVAILABLE :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: REGISTRY :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: _safe_create_metric :: missing-name
+enhanced_agent_bus._compat.metrics.noop :: generate_latest :: missing-name
+enhanced_agent_bus._compat.orchestration.intent_graph :: TaskIntent :: missing-attr:AUDIT :: got EnumType
+enhanced_agent_bus._compat.orchestration.intent_graph :: TaskIntent :: missing-attr:METRICS :: got EnumType
+enhanced_agent_bus._compat.orchestration.intent_graph :: TaskIntent :: missing-attr:PROPOSE :: got EnumType
+enhanced_agent_bus._compat.policy :: PolicyMetadata :: missing-name
+enhanced_agent_bus._compat.policy :: get_policy_index :: missing-name
+enhanced_agent_bus._compat.policy.models :: VerificationStatus :: missing-name
+enhanced_agent_bus._compat.policy.unified_generator :: UnifiedVerifiedPolicyGenerator :: missing-name
+enhanced_agent_bus._compat.redis_config :: RedisConfig :: missing-attr:get_connection_params :: got type
+enhanced_agent_bus._compat.redis_config :: RedisConfig :: missing-attr:get_url :: got type
+enhanced_agent_bus._compat.redis_config :: RedisHealthCheckConfig :: missing-name
+enhanced_agent_bus._compat.redis_config :: RedisHealthListener :: missing-name
+enhanced_agent_bus._compat.redis_config :: RedisHealthState :: missing-name
+enhanced_agent_bus._compat.security.deserialization :: safe_pickle_load :: missing-name
+enhanced_agent_bus._compat.security.deserialization :: safe_pickle_loads :: missing-name
+enhanced_agent_bus._compat.security.execution_time_limit :: ExecutionTimeout :: missing-name
+enhanced_agent_bus._compat.security.execution_time_limit :: python_execution_time_limit :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: RateLimitAlgorithm :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: RateLimitConfig :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: RateLimitResult :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: RateLimitRule :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: RateLimitScope :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: TenantQuota :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: TenantRateLimitProvider :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: TokenBucket :: missing-name
+enhanced_agent_bus._compat.security.rate_limiter :: rate_limiter :: missing-name
+enhanced_agent_bus._compat.structured_logging :: BoundLogger :: missing-name
+enhanced_agent_bus._compat.structured_logging :: StructuredJSONFormatter :: missing-name
+enhanced_agent_bus._compat.structured_logging :: StructuredLogger :: missing-name
+enhanced_agent_bus._compat.structured_logging :: TextFormatter :: missing-name
+enhanced_agent_bus._compat.structured_logging :: correlation_id_var :: missing-name
+enhanced_agent_bus._compat.structured_logging :: instrument_fastapi :: missing-name
+enhanced_agent_bus._compat.structured_logging :: request_id_var :: missing-name
+enhanced_agent_bus._compat.structured_logging :: set_request_id :: missing-name
+enhanced_agent_bus._compat.structured_logging :: setup_opentelemetry :: missing-name
+enhanced_agent_bus._compat.structured_logging :: tenant_id_var :: missing-name
+enhanced_agent_bus._compat.type_guards :: is_policy_result :: missing-name
+enhanced_agent_bus._compat.types :: SupportsAudit :: missing-name
+enhanced_agent_bus._compat.types :: SupportsCircuitBreaker :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: AgentBus :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: ArgsType :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: AsyncFunc :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: DecoratorFunc :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: GovernanceService :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: KwargsType :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: ModelContext :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsAudit :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsAuthentication :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsCache :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsCircuitBreaker :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsCompensation :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsExecution :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsHealthCheck :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsLogging :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsMiddleware :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsRegistry :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsSerialization :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: SupportsValidation :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: TransformFunc :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: ValidatorContext :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: ValidatorFunc :: missing-name
+enhanced_agent_bus._compat.types.protocol_types :: ValidatorValue :: missing-name
+enhanced_agent_bus._compat.utilities :: DependencyRegistry :: missing-attr:get_status :: got type
+enhanced_agent_bus._compat.utilities :: DependencyRegistry :: missing-attr:require :: got type
+enhanced_agent_bus._compat.utilities :: DependencyRegistry :: missing-attr:reset :: got type
+enhanced_agent_bus._compat.utilities.dependency_registry :: DependencyRegistry :: missing-attr:reset :: got type
