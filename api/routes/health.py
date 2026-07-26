@@ -148,16 +148,20 @@ async def health_check(request: Request) -> HealthResponse:
     initialised.  It reads bus availability from ``request.app.state``
     directly (no ``Depends``) so that a missing bus never causes a 503.
     """
+    from ..._compat import _degraded
+
     bus = getattr(request.app.state, "agent_bus", None)
     agent_bus_status = "healthy" if bus else "unhealthy"
+    degraded = _degraded.active()
 
     return HealthResponse(
-        status=agent_bus_status,
+        status="degraded" if degraded else agent_bus_status,
         service="enhanced-agent-bus",
         version=API_VERSION,
         agent_bus_status=agent_bus_status,
         rate_limiting_enabled=RATE_LIMITING_AVAILABLE,
         circuit_breaker_enabled=CIRCUIT_BREAKER_AVAILABLE,
+        degraded_dependencies=degraded,
     )
 
 
