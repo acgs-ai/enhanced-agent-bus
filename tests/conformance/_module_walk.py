@@ -48,6 +48,37 @@ EXCLUDED_DIRS = frozenset(
 EXCLUDED_BASENAMES = frozenset({"conftest.py"})
 EXCLUDED_ROOT_PREFIXES = ("eval_",)
 
+#: Third-party distributions whose presence changes how many modules import.
+#:
+#: The allowlist is only meaningful for one installed dependency set: install
+#: ``[ml]`` and ~15 numpy-blocked modules start importing, which reads as
+#: "someone fixed 15 modules" unless the environment is pinned alongside the
+#: expected failures. The walk reports these so the test can say
+#: "baseline assumed X, found Y" instead of listing modules as if they were fixed.
+PROBE_PACKAGES = (
+    "asyncpg",
+    "cryptography",
+    "email_validator",
+    "numpy",
+    "pandas",
+    "scipy",
+    "sklearn",
+    "sqlalchemy",
+    "structlog",
+    "uvicorn",
+)
+
+
+def probe_env() -> dict[str, str]:
+    """Return ``{distribution: present|absent}`` for the importability-relevant deps."""
+
+    import importlib.util
+
+    return {
+        name: "present" if importlib.util.find_spec(name) is not None else "absent"
+        for name in PROBE_PACKAGES
+    }
+
 
 def dotted_name(relative: Path) -> str:
     """Return the dotted module name a source path is imported under."""
@@ -80,6 +111,7 @@ def discover(root: Path = PKG_ROOT) -> list[str]:
 def walk() -> dict[str, object]:
     """Import every discovered module and return a JSON-serialisable report."""
 
+    env = probe_env()  # before the walk: imported modules may install meta-path hooks
     names = discover()
     failures: dict[str, str] = {}
     for name in names:
@@ -88,7 +120,12 @@ def walk() -> dict[str, object]:
         except BaseException as exc:  # noqa: BLE001 - any failure is a finding
             detail = f"{type(exc).__name__}: {exc}".replace("\n", " ").strip()
             failures[name] = detail[:200]
-    return {"total": len(names), "importable": len(names) - len(failures), "failures": failures}
+    return {
+        "total": len(names),
+        "importable": len(names) - len(failures),
+        "failures": failures,
+        "env": env,
+    }
 
 
 if __name__ == "__main__":

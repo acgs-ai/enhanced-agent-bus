@@ -22,6 +22,7 @@ from . import _module_walk
 ALLOWLIST_PATH = Path(__file__).parent / "known_import_failures.txt"
 _JSON_MARKER = "__CONFORMANCE_JSON__"
 _WALK_TIMEOUT_SECONDS = 900
+_ENV_DIRECTIVE = "# baseline-env:"
 
 
 def load_allowlist() -> set[str]:
@@ -33,6 +34,20 @@ def load_allowlist() -> set[str]:
         if stripped and not stripped.startswith("#"):
             entries.add(stripped)
     return entries
+
+
+def load_baseline_env() -> dict[str, str]:
+    """Return the installed-dependency set the allowlist was recorded against."""
+
+    for line in ALLOWLIST_PATH.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_ENV_DIRECTIVE):
+            body = stripped[len(_ENV_DIRECTIVE) :]
+            return dict(token.split("=", 1) for token in body.split())
+    raise AssertionError(
+        f"{ALLOWLIST_PATH.name} has no '{_ENV_DIRECTIVE}' line. The allowlist is only "
+        "meaningful for one installed dependency set; record it."
+    )
 
 
 def run_walk() -> dict[str, object]:
@@ -72,6 +87,30 @@ def test_allowlist_is_well_formed() -> None:
     )
 
 
+def test_environment_matches_recorded_baseline(walk_report: dict[str, object]) -> None:
+    """The allowlist is only valid for the dependency set it was recorded against.
+
+    Installing an extra makes previously-unimportable modules import, which the
+    drift test would otherwise report as remediation progress made by nobody.
+    Fail here first, naming the dependency, so the cause is unambiguous.
+    """
+
+    observed: dict[str, str] = walk_report["env"]  # type: ignore[assignment]
+    expected = load_baseline_env()
+    differences = sorted(
+        f"{name}: baseline assumed {state}, found {observed.get(name, 'unknown')}"
+        for name, state in expected.items()
+        if observed.get(name) != state
+    )
+    assert not differences, (
+        "installed dependency set differs from the one known_import_failures.txt was "
+        "recorded against, so its counts are not comparable:\n  "
+        + "\n  ".join(differences)
+        + "\n\nEither install the recorded set, or re-record the allowlist and update "
+        f"its '{_ENV_DIRECTIVE}' line in the same commit."
+    )
+
+
 def test_no_new_import_failures(walk_report: dict[str, object]) -> None:
     """The observed failing set must be a subset of the recorded allowlist."""
 
@@ -91,6 +130,8 @@ def test_report_allowlist_drift(walk_report: dict[str, object]) -> None:
     fixed = sorted(load_allowlist() - set(failures))
     assert not fixed, (
         f"{len(fixed)} module(s) now import but are still listed in "
-        "known_import_failures.txt. Delete these lines and record the delta in "
-        "the PR description:\n  " + "\n  ".join(fixed)
+        "known_import_failures.txt. If a remediation phase fixed them, delete these "
+        "lines and record the delta in the PR description. If you installed an extra, "
+        "test_environment_matches_recorded_baseline names the dependency:\n  "
+        + "\n  ".join(fixed)
     )

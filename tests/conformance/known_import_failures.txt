@@ -3,6 +3,14 @@
 # Baseline recorded on main: 854 modules discovered, 712 importable,
 # 142 failing (16.6%).
 #
+# Recorded against `pip install -e ".[dev]" cryptography email-validator sqlalchemy`
+# — no [ml], no [postgres], no [pqc]. That set is pinned machine-readably below and
+# asserted by test_environment_matches_recorded_baseline: installing an extra makes
+# ~15 numpy-blocked and ~7 asyncpg-blocked modules import, which would otherwise read
+# as remediation progress. Re-record the counts and this line in the same commit.
+#
+# baseline-env: asyncpg=absent cryptography=present email_validator=present numpy=absent pandas=absent scipy=absent sklearn=absent sqlalchemy=present structlog=absent uvicorn=absent
+#
 # This file is a ratchet, not a target. Remediation phases DELETE lines from it;
 # tests/conformance/test_all_modules_importable.py fails if a module regresses
 # into the set, and also fails if an entry here now imports (delete it and
