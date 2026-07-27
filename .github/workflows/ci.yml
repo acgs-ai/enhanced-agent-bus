@@ -43,6 +43,23 @@ jobs:
             --import-mode=importlib \
             -m "not slow and not benchmark and not e2e" \
             -v --tb=short
+      # Pinned to 3.11: known_import_failures.txt records a per-interpreter failing
+      # set, and its `# baseline-env:` line pins the installed distributions. The
+      # Install step above reproduces that set exactly (`.[dev]` plus cryptography,
+      # email-validator and sqlalchemy — no [ml], [postgres] or [pqc]). Running the
+      # walk on 3.12 as well would compare against a baseline it was not recorded on.
+      - name: Extraction conformance (import + _compat shim ratchets)
+        if: matrix.python-version == '3.11'
+        env:
+          EAB_PROFILE: dev
+          OPENAI_API_KEY: test-key-for-unit-tests
+          ANTHROPIC_API_KEY: test-key-for-unit-tests
+          ACGS2_SERVICE_SECRET: test-secret-for-unit-tests
+        run: |
+          python -m pytest tests/conformance \
+            --import-mode=importlib \
+            -q --tb=short
+
       - name: Critical path governance tests
         env:
           EAB_PROFILE: dev
