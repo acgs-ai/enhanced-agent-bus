@@ -24,7 +24,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[dev]"
-          python -m pip install cryptography email-validator sqlalchemy  # deps present in local but missing from origin/main pyproject.toml
       - name: Lint
         run: python -m ruff check .
       - name: Test
@@ -45,9 +44,9 @@ jobs:
             -v --tb=short
       # Pinned to 3.11: known_import_failures.txt records a per-interpreter failing
       # set, and its `# baseline-env:` line pins the installed distributions. The
-      # Install step above reproduces that set exactly (`.[dev]` plus cryptography,
-      # email-validator and sqlalchemy — no [ml], [postgres] or [pqc]). Running the
-      # walk on 3.12 as well would compare against a baseline it was not recorded on.
+      # Install step above reproduces that set exactly — a plain `.[dev]`, with no
+      # [ml], [postgres] or [messaging]. Running the walk on 3.12 as well would
+      # compare against a baseline it was not recorded on.
       - name: Extraction conformance (import + _compat shim ratchets)
         if: matrix.python-version == '3.11'
         env:
