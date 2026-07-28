@@ -33,6 +33,11 @@ dependencies = [
     "psutil>=5.9.0",
     "orjson>=3.9.0",
     "python-multipart>=0.0.20",
+    "uvicorn>=0.30.0",         # the documented run command fails at the shell without it
+    "structlog>=24.1.0",       # imported by 6 source modules; blocks ~50 modules from importing
+    "email-validator>=2.0.0",  # required by pydantic EmailStr
+    "cryptography>=44.0.2",    # audit_client + signing_provider import it outside the [pqc] path
+    "sqlalchemy>=2.0.0",       # imported outside the [postgres] path
 ]
 
 [project.urls]
@@ -53,6 +58,7 @@ dev = [
     "fakeredis>=2.18.0",
     "ruff>=0.4.0",
     "httpx>=0.27.0",
+    "pytest-xdist>=3.5.0",  # the suite uses @pytest.mark.xdist_group
 ]
 ml = [
     "numpy>=1.24.0",
@@ -63,19 +69,154 @@ ml = [
     "pandas>=2.1.0",
     "onnxruntime>=1.17",
     "tokenizers>=0.15",
+    "scipy>=1.11.0",
 ]
 pqc = [
     # Post-Quantum Cryptography (NIST PQC standards)
     "liboqs-python>=0.10.0",  # CRYSTALS-Kyber, CRYSTALS-Dilithium, SPHINCS+
-    "cryptography>=44.0.2",  # CVE patched - Classical crypto (Ed25519, X25519) for hybrid mode
+    # cryptography is a runtime dependency (Ed25519/X25519 are imported outside the PQC path)
 ]
 postgres = [
     # PostgreSQL support for saga persistence
     "asyncpg>=0.29.0",  # High-performance async PostgreSQL driver
-    "sqlalchemy>=2.0.0",
+    # sqlalchemy is a runtime dependency (imported outside the PostgreSQL path)
 ]
 messaging = [
     "aiokafka>=0.10.0",
+]
+
+# Explicit, not `[tool.setuptools.packages.find]`.  With the flat layout below
+# (`package-dir = {enhanced_agent_bus = "."}`) declaring `find` disables the rename:
+# discovery yields unprefixed names and the wheel ships api/, bus/, cedar/, ... as
+# top-level packages, which breaks `import enhanced_agent_bus` and collides with
+# unrelated distributions.  Listing packages explicitly keeps the rename and drops
+# the test tree, which was 942 of 1823 wheel files.
+# tests/conformance/test_wheel_contents.py holds this list honest: it fails when a
+# new subpackage exists in the tree but is missing here.
+[tool.setuptools]
+packages = [
+    "enhanced_agent_bus",
+    "enhanced_agent_bus._compat",
+    "enhanced_agent_bus._compat.acgs_logging",
+    "enhanced_agent_bus._compat.audit",
+    "enhanced_agent_bus._compat.auth",
+    "enhanced_agent_bus._compat.cache",
+    "enhanced_agent_bus._compat.config",
+    "enhanced_agent_bus._compat.database",
+    "enhanced_agent_bus._compat.errors",
+    "enhanced_agent_bus._compat.event_schemas",
+    "enhanced_agent_bus._compat.metrics",
+    "enhanced_agent_bus._compat.orchestration",
+    "enhanced_agent_bus._compat.policy",
+    "enhanced_agent_bus._compat.resilience",
+    "enhanced_agent_bus._compat.security",
+    "enhanced_agent_bus._compat.types",
+    "enhanced_agent_bus._compat.utilities",
+    "enhanced_agent_bus.ab_testing_infra",
+    "enhanced_agent_bus.acl_adapters",
+    "enhanced_agent_bus.adapters",
+    "enhanced_agent_bus.adaptive_governance",
+    "enhanced_agent_bus.agent_health",
+    "enhanced_agent_bus.agents",
+    "enhanced_agent_bus.ai_assistant",
+    "enhanced_agent_bus.api",
+    "enhanced_agent_bus.api.routes",
+    "enhanced_agent_bus.batch_processor_infra",
+    "enhanced_agent_bus.benchmarks",
+    "enhanced_agent_bus.bus",
+    "enhanced_agent_bus.cedar",
+    "enhanced_agent_bus.chaos",
+    "enhanced_agent_bus.circuit_breaker",
+    "enhanced_agent_bus.cognitive",
+    "enhanced_agent_bus.collaboration",
+    "enhanced_agent_bus.compliance_layer",
+    "enhanced_agent_bus.components",
+    "enhanced_agent_bus.constitutional",
+    "enhanced_agent_bus.constitutional.storage",
+    "enhanced_agent_bus.constitutional.storage_infra",
+    "enhanced_agent_bus.constitutional_classifier",
+    "enhanced_agent_bus.context",
+    "enhanced_agent_bus.context_memory",
+    "enhanced_agent_bus.context_memory.optimizer",
+    "enhanced_agent_bus.contracts",
+    "enhanced_agent_bus.coordinators",
+    "enhanced_agent_bus.data",
+    "enhanced_agent_bus.data_flywheel",
+    "enhanced_agent_bus.deliberation_layer",
+    "enhanced_agent_bus.deliberation_layer.workflows",
+    "enhanced_agent_bus.enterprise_sso",
+    "enhanced_agent_bus.enterprise_sso.data_warehouse",
+    "enhanced_agent_bus.enterprise_sso.enterprise_sso_infra",
+    "enhanced_agent_bus.exceptions",
+    "enhanced_agent_bus.facades",
+    "enhanced_agent_bus.federation",
+    "enhanced_agent_bus.feedback_handler",
+    "enhanced_agent_bus.governance",
+    "enhanced_agent_bus.governance.stability",
+    "enhanced_agent_bus.governance_path",
+    "enhanced_agent_bus.guardrails",
+    "enhanced_agent_bus.ifc",
+    "enhanced_agent_bus.impact_scorer_infra",
+    "enhanced_agent_bus.impact_scorer_infra.adapters",
+    "enhanced_agent_bus.impact_scorer_infra.algorithms",
+    "enhanced_agent_bus.integrations",
+    "enhanced_agent_bus.langgraph_orchestration",
+    "enhanced_agent_bus.llm_adapters",
+    "enhanced_agent_bus.llm_adapters.cost",
+    "enhanced_agent_bus.llm_adapters.failover",
+    "enhanced_agent_bus.maci",
+    "enhanced_agent_bus.mcp",
+    "enhanced_agent_bus.mcp.servers",
+    "enhanced_agent_bus.mcp.transports",
+    "enhanced_agent_bus.mcp_integration",
+    "enhanced_agent_bus.mcp_integration.auth",
+    "enhanced_agent_bus.mcp_integration.auth.mcp_auth_provider",
+    "enhanced_agent_bus.mcp_server",
+    "enhanced_agent_bus.mcp_server.adapters",
+    "enhanced_agent_bus.mcp_server.protocol",
+    "enhanced_agent_bus.mcp_server.resources",
+    "enhanced_agent_bus.mcp_server.tools",
+    "enhanced_agent_bus.message_processor",
+    "enhanced_agent_bus.meta_orchestrator",
+    "enhanced_agent_bus.meta_orchestrator.coordinators",
+    "enhanced_agent_bus.middlewares",
+    "enhanced_agent_bus.middlewares.batch",
+    "enhanced_agent_bus.multi_tenancy",
+    "enhanced_agent_bus.observability",
+    "enhanced_agent_bus.observability.capacity_metrics",
+    "enhanced_agent_bus.online_learning_infra",
+    "enhanced_agent_bus.opa_client",
+    "enhanced_agent_bus.openevolve_adapter",
+    "enhanced_agent_bus.optimization_toolkit",
+    "enhanced_agent_bus.orchestration",
+    "enhanced_agent_bus.persistence",
+    "enhanced_agent_bus.pipeline",
+    "enhanced_agent_bus.policies",
+    "enhanced_agent_bus.policy",
+    "enhanced_agent_bus.policy_copilot",
+    "enhanced_agent_bus.profiling",
+    "enhanced_agent_bus.prov",
+    "enhanced_agent_bus.response_quality",
+    "enhanced_agent_bus.routes",
+    "enhanced_agent_bus.routes.models",
+    "enhanced_agent_bus.routes.sessions",
+    "enhanced_agent_bus.routes.tenants",
+    "enhanced_agent_bus.saga_persistence",
+    "enhanced_agent_bus.saga_persistence.postgres",
+    "enhanced_agent_bus.saga_persistence.redis",
+    "enhanced_agent_bus.sdpc",
+    "enhanced_agent_bus.security",
+    "enhanced_agent_bus.shared",
+    "enhanced_agent_bus.snapshot",
+    "enhanced_agent_bus.specs",
+    "enhanced_agent_bus.specs.fixtures",
+    "enhanced_agent_bus.swarm_intelligence",
+    "enhanced_agent_bus.tools",
+    "enhanced_agent_bus.validators",
+    "enhanced_agent_bus.verification",
+    "enhanced_agent_bus.verification_layer",
+    "enhanced_agent_bus.visual_studio",
+    "enhanced_agent_bus.workflows",
 ]
 
 [tool.setuptools.package-dir]
@@ -86,7 +227,6 @@ enhanced_agent_bus = ["policies/*.rego", "py.typed"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-pythonpath = ["../.."]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
@@ -109,6 +249,7 @@ markers = [
     "e2e: marks end-to-end tests",
     "chaos: marks chaos engineering tests (T003)",
     "pqc_deprecation: marks tests for PQC API deprecation and Phase 4 migration",
+    "xdist_group: marks tests that must run in the same pytest-xdist worker",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
