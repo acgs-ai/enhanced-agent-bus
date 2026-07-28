@@ -1,15 +1,16 @@
 # Modules that cannot be imported in the standalone distribution.
 #
-# Baseline recorded on main: 854 modules discovered, 712 importable,
-# 142 failing (16.6%).
+# Current: 855 modules discovered, 728 importable, 127 failing (14.9%).
+# Was 854 / 712 / 142 (16.6%) when first recorded on main.
 #
-# Recorded against `pip install -e ".[dev]" cryptography email-validator sqlalchemy`
-# — no [ml], no [postgres], no [pqc]. That set is pinned machine-readably below and
-# asserted by test_environment_matches_recorded_baseline: installing an extra makes
-# ~15 numpy-blocked and ~7 asyncpg-blocked modules import, which would otherwise read
+# Recorded against a plain `pip install -e ".[dev]"` — no [ml], no [postgres],
+# no [messaging]. Nothing is hand-installed any more; the runtime dependencies are
+# declared in pyproject.toml. That set is pinned machine-readably below and asserted
+# by test_environment_matches_recorded_baseline: installing an extra makes ~36
+# numpy-blocked and ~7 asyncpg-blocked modules import, which would otherwise read
 # as remediation progress. Re-record the counts and this line in the same commit.
 #
-# baseline-env: asyncpg=absent cryptography=present email_validator=present numpy=absent pandas=absent scipy=absent sklearn=absent sqlalchemy=present structlog=absent uvicorn=absent
+# baseline-env: asyncpg=absent cryptography=present email_validator=present numpy=absent pandas=absent scipy=absent sklearn=absent sqlalchemy=present structlog=present uvicorn=present
 #
 # This file is a ratchet, not a target. Remediation phases DELETE lines from it;
 # tests/conformance/test_all_modules_importable.py fails if a module regresses
@@ -25,7 +26,6 @@ enhanced_agent_bus.ai_assistant.core
 enhanced_agent_bus.ai_assistant.integration
 enhanced_agent_bus.ai_assistant.response
 enhanced_agent_bus.ai_assistant.retrieval
-enhanced_agent_bus.api.__main__
 enhanced_agent_bus.cb_factory
 enhanced_agent_bus.cb_kafka_producer
 enhanced_agent_bus.cb_opa_client
@@ -84,7 +84,6 @@ enhanced_agent_bus.impact_scorer_infra.algorithms.statistical
 enhanced_agent_bus.impact_scorer_infra.service
 enhanced_agent_bus.impact_scorer_infra.turboquant_cache
 enhanced_agent_bus.integrations.anomaly_monitoring
-enhanced_agent_bus.integrations.managed_agent_executor
 enhanced_agent_bus.kafka_bus
 enhanced_agent_bus.llm_adapters
 enhanced_agent_bus.llm_adapters.anthropic_adapter
@@ -105,19 +104,6 @@ enhanced_agent_bus.llm_adapters.openai_adapter
 enhanced_agent_bus.llm_adapters.openclaw_adapter
 enhanced_agent_bus.llm_adapters.registry
 enhanced_agent_bus.llm_adapters.xai_adapter
-enhanced_agent_bus.mcp
-enhanced_agent_bus.mcp.client
-enhanced_agent_bus.mcp.config
-enhanced_agent_bus.mcp.maci_filter
-enhanced_agent_bus.mcp.pool
-enhanced_agent_bus.mcp.router
-enhanced_agent_bus.mcp.servers
-enhanced_agent_bus.mcp.servers.browser_server
-enhanced_agent_bus.mcp.shared_bridge
-enhanced_agent_bus.mcp.transports
-enhanced_agent_bus.mcp.transports.base
-enhanced_agent_bus.mcp.transports.http
-enhanced_agent_bus.mcp.types
 enhanced_agent_bus.meta_orchestrator
 enhanced_agent_bus.meta_orchestrator.coordinators
 enhanced_agent_bus.meta_orchestrator.coordinators.context_coordinator
