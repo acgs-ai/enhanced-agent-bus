@@ -8,6 +8,7 @@ in this directory would still pass. This test is the guard on the guard.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,30 @@ def test_the_conformance_step_is_blocking(workflow: dict[str, Any]) -> None:
     assert not soft, (
         "conformance step(s) set continue-on-error, so a regression into "
         f"known_import_failures.txt would merge green: {soft}"
+    )
+
+
+def test_ci_provides_uv_for_the_wheel_ratchet(workflow: dict[str, Any]) -> None:
+    """A skipped ratchet is a decorative one, and this one skips itself silently.
+
+    ``test_wheel_contents`` builds a wheel with ``uv`` and calls ``pytest.skip`` when
+    ``uv`` is not on PATH — reasonable locally, invisible in CI. ``setup-python`` does
+    not provide ``uv``, so unless a step installs it the three wheel assertions report
+    as skipped and the job stays green while nothing is checked.
+    """
+
+    steps = workflow["jobs"][_JOB]["steps"]
+    installs = any(
+        re.search(r"(^|\s)uv(\s|$)", line)
+        for step in steps
+        for line in str(step.get("run", "")).splitlines()
+        if "install" in line
+    )
+    action = any("setup-uv" in str(step.get("uses", "")) for step in steps)
+    assert installs or action, (
+        f"no step in the '{_JOB}' job installs uv. tests/conformance/test_wheel_contents.py "
+        "skips itself when uv is absent, so the wheel would go unchecked and the job would "
+        "still pass."
     )
 
 

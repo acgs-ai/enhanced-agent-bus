@@ -23,6 +23,9 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip setuptools wheel
+          # uv builds the wheel in tests/conformance/test_wheel_contents.py, which
+          # skips itself when uv is missing. Without this the ratchet is decorative.
+          python -m pip install uv
           python -m pip install -e ".[dev]"
       - name: Lint
         run: python -m ruff check .
