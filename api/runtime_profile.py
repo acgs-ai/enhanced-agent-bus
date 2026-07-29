@@ -100,6 +100,28 @@ def require_prod_dependency(name: str, condition: object) -> None:
         raise RuntimeError(f"Production dependency unavailable: {name}")
 
 
+def require_no_degraded_dependencies() -> None:
+    """Refuse to start in production while a `_compat` shim serves a fallback.
+
+    Extends the fail-closed profile past the individually named startup gates:
+    those check backends the process reaches over the network, this checks the
+    dependencies it substituted at import. Read live rather than cached, because
+    a test may install a real backend and clear the registry after the shim was
+    first imported.
+
+    Imported locally so that ``runtime_profile`` stays free of package-level
+    import cost and cannot participate in a `_compat` import cycle.
+    """
+
+    from .._compat import _degraded
+
+    blocking = _degraded.active_blocking()
+    if blocking:
+        require_prod_dependency(
+            f"non_degraded_dependencies [{_degraded.describe(blocking)}]", False
+        )
+
+
 def require_auth_secret() -> None:
     """Require at least one supported auth secret marker in production."""
 
@@ -123,5 +145,6 @@ __all__ = [
     "is_dev",
     "is_prod",
     "require_auth_secret",
+    "require_no_degraded_dependencies",
     "require_prod_dependency",
 ]

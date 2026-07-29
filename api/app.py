@@ -91,6 +91,7 @@ from .runtime_profile import (
     is_demo,
     is_prod,
     require_auth_secret,
+    require_no_degraded_dependencies,
     require_prod_dependency,
 )
 
@@ -532,6 +533,9 @@ async def _verify_startup_dependencies(application: FastAPI) -> None:
     if is_prod() or is_demo():
         await _verify_policy_backend_ready()
         await _verify_audit_backend_ready()
+    # Checked last: the named gates above report a specific missing backend,
+    # which is the more actionable error when both are unsatisfied.
+    require_no_degraded_dependencies()
 
 
 def _attach_pqc_postgres_fallback(

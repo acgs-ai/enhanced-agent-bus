@@ -9,7 +9,6 @@ The AgentHealthStore and AuditLogClient are injected via dependencies for testab
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -28,6 +27,7 @@ from enhanced_agent_bus.agent_health.store import AgentHealthStore
 from enhanced_agent_bus.observability.structured_logging import get_logger
 
 from ..rate_limiting import limiter
+from ..runtime_profile import is_dev
 
 logger = get_logger(__name__)
 
@@ -142,9 +142,11 @@ async def require_operator_role(request: Request) -> str:
 
     # Fallback: minimal header-based check used in environments where the
     # shared security layer is not installed (dev/test).
-    environment = os.environ.get("ENVIRONMENT", "").lower()
-    dev_envs = frozenset(("development", "dev", "test", "testing", "ci"))
-    if environment not in dev_envs:
+    #
+    # Gated on the runtime profile, not a local ENVIRONMENT read: EAB_PROFILE is
+    # authoritative, so `EAB_PROFILE=prod ENVIRONMENT=test` must take the strict
+    # path. Reading ENVIRONMENT directly here made that combination fail open.
+    if not is_dev():
         raise HTTPException(
             status_code=503,
             detail="JWT RBAC security dependency not available outside dev environments",

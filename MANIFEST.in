@@ -1,0 +1,26 @@
+# Source-distribution contents.
+#
+# package-dir = {enhanced_agent_bus = "."} makes the repository root the package
+# directory, so the top-level tests/ tree lands in the sdist. Measured from a clean
+# checkout before this file existed: 1522 members, 3.4 MB, 513 of them test files.
+# The explicit `[tool.setuptools] packages` list in pyproject.toml keeps tests out
+# of the *wheel* and says nothing about the sdist, which is why both exist.
+#
+# Only the top-level tests/ needs pruning. The per-package tests directories
+# (api/tests, observability/tests, ...) are not listed packages, so setuptools
+# never collects them — `prune api/tests` and friends are no-ops. Measured, not
+# assumed: removing them changes the archive by zero members. Do not add them back.
+
+prune tests
+
+# Working-copy hygiene. A clean checkout has none of these, so they are no-ops in
+# CI; they exist so an sdist built in a developer tree matches the one CI builds
+# instead of shipping whatever local build/ and __pycache__ happen to hold.
+prune build
+prune dist
+prune htmlcov
+prune node_modules
+prune .venv
+prune venv
+global-exclude *.py[cod]
+global-exclude __pycache__/*

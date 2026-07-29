@@ -11,6 +11,10 @@ build/
 dist/
 *.egg-info/
 
+# Local virtualenvs
+.venv/
+venv/
+
 # Local MLflow runs from experiments
 mlflow.db
 mlruns/

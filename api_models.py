@@ -203,6 +203,14 @@ class HealthResponse(BaseModel):
     circuit_breaker_enabled: bool = Field(
         default=False, description="Whether circuit breaker is active"
     )
+    degraded_dependencies: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Compatibility shims currently serving a fallback instead of the real "
+            "dependency, as {name: tier}. Non-empty means the process is running "
+            "degraded; a 'security' or 'governance' entry blocks a production start."
+        ),
+    )
 
 
 class ErrorResponse(BaseModel):
