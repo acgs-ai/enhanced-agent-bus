@@ -10,6 +10,7 @@ Role definitions (aligned with maci_enforcement.py):
   - Proposer  : suggests governance actions — read-only tools only.
   - Validator : verifies constitutional compliance — verification tools.
   - Executor  : executes approved actions — write / provisioning tools.
+  - Observer  : monitors state — read-only tools, configurable only to narrow access.
 
 All access denials are logged with structured context for the audit trail.
 
@@ -25,22 +26,15 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-try:
-    from enhanced_agent_bus._compat.constants import CONSTITUTIONAL_HASH
-except ImportError:
-    CONSTITUTIONAL_HASH = "standalone"
-try:
-    from enhanced_agent_bus._compat.types import JSONDict
-except ImportError:
-    JSONDict = dict  # type: ignore[misc,assignment]
-
+from enhanced_agent_bus._compat.constants import CONSTITUTIONAL_HASH
+from enhanced_agent_bus._compat.types import JSONDict
 from enhanced_agent_bus.maci_role_projection import project_to_mcp_tool_role
 from enhanced_agent_bus.observability.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Role enum (task-specific — maps to the 3-role MACI model described in the
+# Role enum (task-specific — maps to the tool-level MACI model described in the
 # task brief; deliberately separate from the 7-role MACIRole in
 # maci_enforcement.py to avoid coupling this lightweight filter to the full
 # enforcement engine.)
@@ -48,11 +42,17 @@ logger = get_logger(__name__)
 
 
 class MACIToolRole(str, Enum):
-    """The three canonical MACI roles for tool-level access control."""
+    """Subsystem roles for tool-level access control."""
 
     PROPOSER = "proposer"
     VALIDATOR = "validator"
     EXECUTOR = "executor"
+    OBSERVER = "observer"
+
+
+# Independent of mutable default and custom matrices: observers cannot gain
+# proposer, validator, or executor authority through configuration.
+_OBSERVER_PREFIXES = ("audit_query_", "policy_list_", "policy_get_")
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +69,7 @@ class MACIToolRole(str, Enum):
 # ---------------------------------------------------------------------------
 
 ROLE_TOOL_MATRIX: dict[MACIToolRole, list[str]] = {
+    MACIToolRole.OBSERVER: [prefix + "*" for prefix in _OBSERVER_PREFIXES],
     MACIToolRole.PROPOSER: [
         "audit_query_*",
         "policy_list_*",
@@ -98,6 +99,8 @@ class ToolFilterConfig:
     Attributes:
         role_tool_matrix: Mapping of role → list of allowed glob patterns.
             Defaults to ``ROLE_TOOL_MATRIX`` when ``None``.
+            Observer patterns may narrow access within the read-only prefixes;
+            patterns outside that ceiling are discarded.
         strict_mode: Deprecated compatibility flag retained for config
             stability. Unknown roles are always denied.
         constitutional_hash: Governance hash embedded in every audit record.
@@ -111,8 +114,14 @@ class ToolFilterConfig:
     audit_denials: bool = True
 
     def resolved_matrix(self) -> dict[MACIToolRole, list[str]]:
-        """Return the effective role → pattern matrix."""
-        return self.role_tool_matrix if self.role_tool_matrix is not None else ROLE_TOOL_MATRIX
+        """Return a detached matrix enforcing the observer read ceiling."""
+        source = self.role_tool_matrix if self.role_tool_matrix is not None else ROLE_TOOL_MATRIX
+        matrix = {role: list(patterns) for role, patterns in source.items()}
+        matrix[MACIToolRole.OBSERVER] = [
+            pattern for pattern in source.get(MACIToolRole.OBSERVER, [])
+            if pattern.startswith(_OBSERVER_PREFIXES)
+        ]
+        return matrix
 
     @classmethod
     def from_env(cls) -> ToolFilterConfig:
@@ -136,6 +145,8 @@ class ToolFilterConfig:
 
         ``MACI_FILTER_EXECUTOR_PATTERNS``
             Same for the executor role.
+
+        Observer has no environment override and never inherits proposer settings.
         """
         strict = os.getenv("MACI_FILTER_STRICT_MODE", "true").lower() == "true"
         audit = os.getenv("MACI_FILTER_AUDIT_DENIALS", "true").lower() == "true"

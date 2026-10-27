@@ -6,13 +6,13 @@ from typing import Literal
 
 from enhanced_agent_bus._compat.constants import MACIRole
 
-ToolProjectionRole = Literal["proposer", "validator", "executor"]
+ToolProjectionRole = Literal["proposer", "validator", "executor", "observer"]
 VerificationProjectionRole = Literal["executive", "legislative", "judicial", "monitor", "auditor"]
 
 MCP_TOOL_ROLE_PROJECTIONS: dict[MACIRole, ToolProjectionRole] = {
     MACIRole.EXECUTIVE: "proposer",
     MACIRole.LEGISLATIVE: "proposer",
-    MACIRole.MONITOR: "proposer",
+    MACIRole.MONITOR: "observer",
     MACIRole.JUDICIAL: "validator",
     MACIRole.AUDITOR: "validator",
     MACIRole.CONTROLLER: "executor",

@@ -776,7 +776,10 @@ class TestToolFilterConfig:
     def test_custom_matrix(self):
         custom = {MACIToolRole.PROPOSER: ["custom_*"]}
         cfg = ToolFilterConfig(role_tool_matrix=custom)
-        assert cfg.resolved_matrix() == custom
+        assert cfg.resolved_matrix() == {
+            **custom,
+            MACIToolRole.OBSERVER: [],
+        }
 
     def test_from_env_defaults(self):
         with patch.dict("os.environ", {}, clear=True):

@@ -6,10 +6,22 @@ Constitutional Hash: 608508a9bd224290
 import pytest
 
 from enhanced_agent_bus.maci_enforcement import (
+    ROLE_PERMISSIONS,
     MACIAction,
     MACIRole,
     validate_maci_role_matrix,
 )
+
+
+@pytest.mark.constitutional
+def test_monitor_action_authority_is_read_only() -> None:
+    assert ROLE_PERMISSIONS[MACIRole.MONITOR] == {
+        MACIAction.QUERY, MACIAction.MONITOR_ACTIVITY,
+    }
+    for action in MACIAction:
+        assert (action in ROLE_PERMISSIONS[MACIRole.MONITOR]) == (
+            action in {MACIAction.QUERY, MACIAction.MONITOR_ACTIVITY}
+        )
 
 
 @pytest.mark.constitutional
