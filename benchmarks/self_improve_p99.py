@@ -73,6 +73,7 @@ WARMUP = 300
 BLOCKS = 9
 PER_BLOCK = 4000
 TENANT = "tenant-alpha"
+MIN_VALIDATION_CACHE_ENTRIES = 10000  # production DEFAULT_LRU_CACHE_SIZE at baseline
 
 
 def _fail(reason: str) -> None:
@@ -418,9 +419,19 @@ async def _run(mp_module: Any, write_expected: bool) -> dict[str, Any]:
         await _drain(processor)
     if dlq.pushes == 0:
         _fail("in-memory DLQ received no pushes during warmup; DLQ sink wiring changed")
-    cache_backing = getattr(processor._validation_cache, "_backing", None)
-    if cache_backing is not None:
-        print(f"[bench] validation cache entries after fill: {len(cache_backing)}", file=sys.stderr)
+    # Guard against "optimizing" by shrinking the production validation cache:
+    # decisions would not change, but hit rates would silently regress.
+    cache = processor._validation_cache
+    sized = cache if hasattr(cache, "__len__") else getattr(cache, "_backing", None)
+    if sized is None:
+        _fail("validation cache size is not observable (__len__ or _backing required)")
+    cache_entries = len(sized)
+    print(f"[bench] validation cache entries after fill: {cache_entries}", file=sys.stderr)
+    if cache_entries < MIN_VALIDATION_CACHE_ENTRIES:
+        _fail(
+            f"validation cache holds {cache_entries} entries after fill; "
+            f"production floor is {MIN_VALIDATION_CACHE_ENTRIES}"
+        )
 
     gc.collect()
     gc.freeze()
