@@ -134,8 +134,11 @@ class PACARVerifier:
         )
         # Fail closed: a missing or empty decision is treated as "reject", never "approve".
         decision = multi_turn.get("recommended_decision") or "reject"
+        # Same bar as single-turn verify(): an "approve" must also carry an explicit
+        # low/medium risk_level. "approve" with high/critical/missing risk is invalid.
+        risk_ok = multi_turn.get("risk_level") in _ACCEPTABLE_RISK_LEVELS
         verification_result = {
-            "is_valid": decision == "approve",
+            "is_valid": decision == "approve" and risk_ok,
             "confidence": multi_turn.get("confidence", 0.0),
         }
         entry = {

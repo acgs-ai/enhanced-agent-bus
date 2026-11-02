@@ -59,6 +59,7 @@ def _approving_assistant() -> SimpleNamespace:
         ainvoke_multi_turn=AsyncMock(
             return_value={
                 "recommended_decision": "approve",
+                "risk_level": "low",
                 "confidence": 0.8,
                 "reasoning": ["multi-turn ok"],
             }
@@ -263,7 +264,7 @@ async def test_session_history_is_tenant_isolated(pacar, monkeypatch) -> None:
 
     async def record(content, history):
         seen_history.append(list(history))
-        return {"recommended_decision": "approve", "confidence": 0.8}
+        return {"recommended_decision": "approve", "risk_level": "low", "confidence": 0.8}
 
     verifier.assistant.ainvoke_multi_turn = AsyncMock(side_effect=record)
 
@@ -349,6 +350,10 @@ async def test_unrouted_message_with_missing_pacar_verdict_still_processes(pacar
         "_perform_sdpc",
         AsyncMock(return_value=({}, {})),
     )
+    strategy_spy = AsyncMock(wraps=processor._verification_coordinator._processing_strategy.process)
+    monkeypatch.setattr(
+        processor._verification_coordinator._processing_strategy, "process", strategy_spy
+    )
     msg = AgentMessage(
         content={"q": "status"},
         message_type=MessageType.QUERY,
@@ -358,7 +363,22 @@ async def test_unrouted_message_with_missing_pacar_verdict_still_processes(pacar
 
     result = await processor.process(msg)
 
+    assert result.is_valid, result.errors
     assert result.metadata.get("rejection_reason") != "pacar_verification_failed"
+    strategy_spy.assert_awaited_once()
+
+
+@pytest.mark.parametrize("risk", [None, "high", "critical", "unreviewed"])
+async def test_multi_turn_approve_with_unacceptable_risk_blocks(pacar, risk) -> None:
+    processor, verifier = pacar
+    payload = {"recommended_decision": "approve", "confidence": 0.9, "reasoning": ["x"]}
+    if risk is not None:
+        payload["risk_level"] = risk
+    verifier.assistant.ainvoke_multi_turn = AsyncMock(return_value=payload)
+
+    result = await processor.process(_task_request(session_id="sess-risk", tenant_id="tenant-a"))
+
+    _assert_pacar_blocked(result)
 
 
 async def test_session_history_is_capped_per_session() -> None:
