@@ -102,3 +102,43 @@ async def test_high_risk_pacar_verdict_is_reported_invalid() -> None:
     result = await processor.process(_task_request())
 
     assert result.metadata.get("sdpc_pacar_valid") is False
+
+
+@pytest.mark.parametrize(
+    "analysis",
+    [
+        {"confidence": 0.9, "reasoning": ["no verdict"]},  # risk_level missing
+        {"risk_level": "critical", "confidence": 0.9},
+        {"risk_level": "unknown", "confidence": 0.9},
+        {},
+    ],
+    ids=["missing", "critical", "unknown", "empty"],
+)
+async def test_single_turn_verdict_fails_closed(analysis: dict) -> None:
+    processor, verifier = _processor_with_real_pacar()
+    verifier.assistant.analyze_message_impact = AsyncMock(return_value=analysis)
+
+    result = await processor.process(_task_request())
+
+    assert result.metadata.get("sdpc_pacar_valid") is False
+
+
+@pytest.mark.parametrize(
+    "multi_turn",
+    [
+        {"confidence": 0.8, "reasoning": ["no decision"]},
+        {"recommended_decision": "", "confidence": 0.8},
+        {"recommended_decision": None},
+        {"recommended_decision": "review", "confidence": 0.8},
+        {},
+    ],
+    ids=["missing", "empty-string", "none", "review", "empty"],
+)
+async def test_multi_turn_missing_decision_fails_closed(multi_turn: dict) -> None:
+    processor, verifier = _processor_with_real_pacar()
+    verifier.assistant.ainvoke_multi_turn = AsyncMock(return_value=multi_turn)
+
+    result = await processor.process(_task_request(session_id="sess-9", tenant_id="tenant-a"))
+
+    assert result.metadata.get("sdpc_pacar_valid") is False
+    assert verifier.assistant.ainvoke_multi_turn.await_count == 1

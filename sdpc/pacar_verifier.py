@@ -12,6 +12,10 @@ from .pacar_manager import PACARManager
 
 sys.modules.setdefault("enhanced_agent_bus.sdpc.pacar_verifier", sys.modules[__name__])
 
+# PACAR verdicts are advisory (recorded in result metadata as sdpc_pacar_*; they do not
+# change MessageProcessor accept/reject). Even so, the verdict itself must fail closed.
+_ACCEPTABLE_RISK_LEVELS = frozenset({"low", "medium"})
+
 
 class _DefaultAssistant:
     async def analyze_message_impact(self, content: str) -> dict[str, Any]:
@@ -48,12 +52,15 @@ class PACARVerifier:
 
     async def verify(self, content: str, original_intent: str) -> dict[str, Any]:
         analysis = await self.assistant.analyze_message_impact(content)
+        # Fail closed: only an explicit low/medium risk verdict is valid. A missing,
+        # unknown, "high" or "critical" risk_level is invalid.
+        risk_ok = analysis.get("risk_level") in _ACCEPTABLE_RISK_LEVELS
         return {
-            "is_valid": analysis.get("risk_level") != "high",
+            "is_valid": risk_ok,
             "confidence": analysis.get("confidence", 0.0),
             "reasoning": analysis.get("reasoning", []),
             "mitigations": analysis.get("mitigations", []),
-            "consensus_reached": analysis.get("risk_level") != "high",
+            "consensus_reached": risk_ok,
             "critique": analysis.get("reasoning", []),
         }
 
@@ -100,8 +107,10 @@ class PACARVerifier:
         multi_turn = await self.assistant.ainvoke_multi_turn(
             content, conversation.get("messages", [])
         )
+        # Fail closed: a missing or empty decision is treated as "reject", never "approve".
+        decision = multi_turn.get("recommended_decision") or "reject"
         verification_result = {
-            "is_valid": multi_turn.get("recommended_decision", "approve") == "approve",
+            "is_valid": decision == "approve",
             "confidence": multi_turn.get("confidence", 0.0),
         }
         entry = {
@@ -134,7 +143,7 @@ class PACARVerifier:
             await self.manager.add_message(
                 session_id,
                 MessageRole.SYSTEM,
-                multi_turn.get("recommended_decision", "approve"),
+                decision,
                 {"phase": "decision"},
             )
 
@@ -143,8 +152,8 @@ class PACARVerifier:
             "confidence": verification_result["confidence"],
             "reasoning": multi_turn.get("reasoning", []),
             "mitigations": multi_turn.get("mitigations", []),
-            "recommended_decision": multi_turn.get("recommended_decision", "approve"),
-            "consensus_reached": multi_turn.get("recommended_decision", "approve") == "approve",
+            "recommended_decision": decision,
+            "consensus_reached": verification_result["is_valid"],
             "session_id": session_id,
             "message_count": len(conversation["messages"]),
         }
