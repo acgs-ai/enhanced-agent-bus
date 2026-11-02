@@ -74,6 +74,11 @@ class PACARVerifier:
         # Fail closed: only an explicit low/medium risk verdict is valid. A missing,
         # unknown, "high" or "critical" risk_level is invalid.
         risk_ok = analysis.get("risk_level") in _ACCEPTABLE_RISK_LEVELS
+        # A reviewer that states a decision must state "approve"; "reject"/"review"/other
+        # blocks even when the risk level looks acceptable.
+        decision = analysis.get("recommended_decision")
+        if decision is not None and decision != "approve":
+            risk_ok = False
         return {
             "is_valid": risk_ok,
             "confidence": analysis.get("confidence", 0.0),

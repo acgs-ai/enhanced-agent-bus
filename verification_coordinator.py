@@ -18,6 +18,7 @@ from .message_processor_components import (
 from .models import AgentMessage
 from .processing_context import MessageProcessingContext
 from .validators import ValidationResult
+from .verification_orchestrator import message_requires_pacar
 
 
 class VerificationCoordinator:
@@ -107,9 +108,11 @@ class VerificationCoordinator:
             )
             return pqc_failure_result
 
-        # PACAR is enforcing: when PACAR ran (key present), anything but an explicit True
-        # rejects before any handler runs. Absence means PACAR was not routed.
-        if "sdpc_pacar_valid" in sdpc_metadata and sdpc_metadata["sdpc_pacar_valid"] is not True:
+        # PACAR is enforcing: when PACAR ran (key present) or the message must be routed
+        # to PACAR, anything but an explicit True rejects before any handler runs. A
+        # routed message with no verdict (key missing) is denied, not waved through.
+        pacar_required = "sdpc_pacar_valid" in sdpc_metadata or message_requires_pacar(msg)
+        if pacar_required and sdpc_metadata.get("sdpc_pacar_valid") is not True:
             self._increment_failed_count()
             pacar_failure = ValidationResult(
                 is_valid=False,

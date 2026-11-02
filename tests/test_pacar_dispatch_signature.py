@@ -299,3 +299,108 @@ async def test_default_placeholder_reviewer_denies(monkeypatch, extra) -> None:
     result = await processor.process(_task_request(**extra))
 
     _assert_pacar_blocked(result)
+
+
+@pytest.mark.parametrize("decision", ["reject", "review", "escalate", ""])
+async def test_single_turn_low_risk_with_non_approve_decision_blocks(pacar, decision) -> None:
+    processor, verifier = pacar
+    verifier.assistant.analyze_message_impact = AsyncMock(
+        return_value={"risk_level": "low", "confidence": 0.9, "recommended_decision": decision}
+    )
+
+    result = await processor.process(_task_request())
+
+    _assert_pacar_blocked(result)
+
+
+async def test_single_turn_low_risk_with_approve_decision_allows(pacar) -> None:
+    processor, verifier = pacar
+    verifier.assistant.analyze_message_impact = AsyncMock(
+        return_value={"risk_level": "low", "confidence": 0.9, "recommended_decision": "approve"}
+    )
+
+    result = await processor.process(_task_request())
+
+    assert result.is_valid, result.errors
+    assert result.metadata.get("sdpc_pacar_valid") is True
+
+
+async def test_routed_message_with_missing_pacar_verdict_blocks(pacar, monkeypatch) -> None:
+    """Defense in depth: if SDPC drops the PACAR verdict, the coordinator still denies."""
+    processor, _ = pacar
+    monkeypatch.setattr(
+        processor._verification_orchestrator,
+        "_perform_sdpc",
+        AsyncMock(return_value=({}, {})),
+    )
+
+    result = await processor.process(_task_request())
+
+    assert result.is_valid is False
+    assert result.decision == "DENY"
+    assert result.metadata.get("rejection_reason") == "pacar_verification_failed"
+    assert "sdpc_pacar_valid" not in result.metadata
+
+
+async def test_unrouted_message_with_missing_pacar_verdict_still_processes(pacar, monkeypatch):
+    processor, _ = pacar
+    monkeypatch.setattr(
+        processor._verification_orchestrator,
+        "_perform_sdpc",
+        AsyncMock(return_value=({}, {})),
+    )
+    msg = AgentMessage(
+        content={"q": "status"},
+        message_type=MessageType.QUERY,
+        from_agent="admin-agent",
+        to_agent="analysis-agent",
+    )
+
+    result = await processor.process(msg)
+
+    assert result.metadata.get("rejection_reason") != "pacar_verification_failed"
+
+
+async def test_session_history_is_capped_per_session() -> None:
+    from enhanced_agent_bus.sdpc.conversation import MessageRole
+    from enhanced_agent_bus.sdpc.pacar_manager import _MAX_SESSION_MESSAGES
+
+    manager = PACARManager()
+    manager._redis = _FakeRedis()
+    for i in range(_MAX_SESSION_MESSAGES + 60):
+        await manager.add_message("t:sess", MessageRole.USER, f"m{i}")
+
+    state = await manager.get_state("t:sess")
+    assert len(state.messages) == _MAX_SESSION_MESSAGES
+    assert state.messages[-1].content == f"m{_MAX_SESSION_MESSAGES + 59}"
+    persisted = json.loads(manager._redis.store["pacar:session:t:sess"])
+    assert len(persisted["messages"]) == _MAX_SESSION_MESSAGES
+
+
+@pytest.mark.parametrize("risk", [None, "unreviewed", "high", "critical", "unknown"])
+async def test_asc_verifier_fails_closed_on_non_acceptable_risk(risk) -> None:
+    from enhanced_agent_bus.deliberation_layer.intent_classifier import IntentType
+    from enhanced_agent_bus.sdpc.asc_verifier import ASCVerifier
+
+    verifier = ASCVerifier()
+    if risk != "unreviewed":
+        payload = {} if risk is None else {"risk_level": risk}
+        verifier.assistant = SimpleNamespace(analyze_message_impact=AsyncMock(return_value=payload))
+
+    result = await verifier.verify("The meeting is on 3 May in Paris.", IntentType.FACTUAL)
+
+    assert result["is_valid"] is False
+
+
+async def test_asc_verifier_accepts_low_risk() -> None:
+    from enhanced_agent_bus.deliberation_layer.intent_classifier import IntentType
+    from enhanced_agent_bus.sdpc.asc_verifier import ASCVerifier
+
+    verifier = ASCVerifier()
+    verifier.assistant = SimpleNamespace(
+        analyze_message_impact=AsyncMock(return_value={"risk_level": "low", "confidence": 0.9})
+    )
+
+    result = await verifier.verify("The meeting is on 3 May in Paris.", IntentType.FACTUAL)
+
+    assert result["is_valid"] is True

@@ -37,6 +37,9 @@ except ImportError:  # pragma: no cover
     _redis_backend = _RedisStub()
 
 _MAX_LOCAL_SESSIONS = 10_000
+# verify_with_context appends 3 messages per call; 150 keeps the same 50-turn window
+# as its Redis path and bounds memory for a sender that reuses one session_id.
+_MAX_SESSION_MESSAGES = 150
 
 _PACAR_OPERATION_ERRORS = (
     RuntimeError,
@@ -104,6 +107,8 @@ class PACARManager:
         state.messages.append(
             ConversationMessage(role=role, content=content, metadata=metadata or {})
         )
+        if len(state.messages) > _MAX_SESSION_MESSAGES:
+            del state.messages[:-_MAX_SESSION_MESSAGES]
         state.updated_at = datetime.now(UTC).isoformat()
         await self.save_state(state)
         return state
