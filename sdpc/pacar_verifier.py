@@ -28,23 +28,32 @@ def _tenant_scoped_session(tenant_id: str | None, session_id: str) -> str:
 
 
 class _DefaultAssistant:
+    """Placeholder reviewer: no real review is wired, so PACAR must deny.
+
+    PACAR is enforcing. Approving without a review would let every PACAR-routed
+    message (all TASK_REQUESTs) through unscreened. Wire a real assistant via
+    ``get_llm_assistant`` before relying on PACAR to approve anything.
+    """
+
     async def analyze_message_impact(self, content: str) -> dict[str, Any]:
+        _ = content
         return {
-            "risk_level": "low",
-            "confidence": 0.8,
-            "reasoning": ["default_review"],
-            "mitigations": ["none"],
+            "risk_level": "unreviewed",
+            "confidence": 0.0,
+            "reasoning": ["no_pacar_reviewer_configured"],
+            "mitigations": ["configure_pacar_reviewer"],
         }
 
     async def ainvoke_multi_turn(
         self, content: str, history: list[dict[str, Any]]
     ) -> dict[str, Any]:
+        _ = (content, history)
         return {
-            "recommended_decision": "approve",
-            "risk_level": "low",
-            "confidence": 0.8,
-            "reasoning": ["default_multi_turn_review"],
-            "mitigations": ["none"],
+            "recommended_decision": "reject",
+            "risk_level": "unreviewed",
+            "confidence": 0.0,
+            "reasoning": ["no_pacar_reviewer_configured"],
+            "mitigations": ["configure_pacar_reviewer"],
         }
 
 

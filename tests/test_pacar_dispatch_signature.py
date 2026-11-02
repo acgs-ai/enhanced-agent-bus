@@ -280,3 +280,22 @@ async def test_session_history_is_tenant_isolated(pacar, monkeypatch) -> None:
     assert "tenant-a" in keys[0] and "tenant-b" in keys[1]
     stored_sessions = {json.loads(manager._redis.store[k])["session_id"] for k in keys}
     assert len(stored_sessions) == 2
+
+
+@pytest.mark.parametrize("extra", [{}, {"session_id": "sess-default", "tenant_id": "tenant-a"}])
+async def test_default_placeholder_reviewer_denies(monkeypatch, extra) -> None:
+    """With no real reviewer wired, the built-in placeholder must block PACAR traffic."""
+    from enhanced_agent_bus.sdpc.pacar_verifier import _DefaultAssistant
+
+    processor = MessageProcessor(enable_maci=False)  # test-only: MACI off
+    verifier = processor.pacar_verifier
+    if not isinstance(verifier, PACARVerifier):
+        pytest.fail("SDPC unavailable: processor uses no-op PACAR verifier")
+    monkeypatch.setattr(verifier, "assistant", _DefaultAssistant())
+    monkeypatch.setattr(verifier, "manager", _FakeManager())
+    monkeypatch.setattr(verifier, "redis_client", None)
+    monkeypatch.setattr(verifier, "audit_client", None)
+
+    result = await processor.process(_task_request(**extra))
+
+    _assert_pacar_blocked(result)
