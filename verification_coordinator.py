@@ -107,6 +107,25 @@ class VerificationCoordinator:
             )
             return pqc_failure_result
 
+        # PACAR is enforcing: an invalid verdict rejects before any handler runs. Only an
+        # explicit False is a verdict; absence means PACAR was not routed for this message.
+        if sdpc_metadata.get("sdpc_pacar_valid") is False:
+            self._increment_failed_count()
+            pacar_failure = ValidationResult(
+                is_valid=False,
+                errors=["PACAR verification rejected message"],
+                metadata={**sdpc_metadata, "rejection_reason": "pacar_verification_failed"},
+                decision="DENY",
+            )
+            self._attach_governance_metadata(context, pacar_failure)
+            await self._handle_failed_processing(
+                msg,
+                pacar_failure,
+                increment_failed_count=False,
+                failure_stage="verification",
+            )
+            return pacar_failure
+
         res = await self._processing_strategy.process(msg, self._handlers)
         res.metadata.update(sdpc_metadata)
         self._attach_governance_metadata(context, res)

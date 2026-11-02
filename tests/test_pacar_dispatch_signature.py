@@ -57,6 +57,14 @@ def _processor_with_real_pacar() -> tuple[MessageProcessor, PACARVerifier]:
     return processor, verifier
 
 
+def _assert_pacar_blocked(result) -> None:
+    assert result.is_valid is False
+    assert result.decision == "DENY"
+    assert result.metadata.get("sdpc_pacar_valid") is False
+    assert result.metadata.get("rejection_reason") == "pacar_verification_failed"
+    assert "PACAR verification rejected message" in result.errors
+
+
 def _task_request(**extra: object) -> AgentMessage:
     return AgentMessage(
         content={"task": "Summarize quarterly governance metrics"},
@@ -93,7 +101,7 @@ async def test_task_request_with_session_uses_verify_with_context() -> None:
     assert {sid for sid, _, _ in verifier.manager.added} == {"sess-123"}
 
 
-async def test_high_risk_pacar_verdict_is_reported_invalid() -> None:
+async def test_high_risk_pacar_verdict_blocks_message() -> None:
     processor, verifier = _processor_with_real_pacar()
     verifier.assistant.analyze_message_impact = AsyncMock(
         return_value={"risk_level": "high", "confidence": 0.95, "reasoning": ["risky"]}
@@ -101,7 +109,7 @@ async def test_high_risk_pacar_verdict_is_reported_invalid() -> None:
 
     result = await processor.process(_task_request())
 
-    assert result.metadata.get("sdpc_pacar_valid") is False
+    _assert_pacar_blocked(result)
 
 
 @pytest.mark.parametrize(
@@ -120,7 +128,7 @@ async def test_single_turn_verdict_fails_closed(analysis: dict) -> None:
 
     result = await processor.process(_task_request())
 
-    assert result.metadata.get("sdpc_pacar_valid") is False
+    _assert_pacar_blocked(result)
 
 
 @pytest.mark.parametrize(
@@ -140,5 +148,19 @@ async def test_multi_turn_missing_decision_fails_closed(multi_turn: dict) -> Non
 
     result = await processor.process(_task_request(session_id="sess-9", tenant_id="tenant-a"))
 
-    assert result.metadata.get("sdpc_pacar_valid") is False
+    _assert_pacar_blocked(result)
     assert verifier.assistant.ainvoke_multi_turn.await_count == 1
+
+
+@pytest.mark.parametrize("with_session", [False, True], ids=["single-turn", "multi-turn"])
+async def test_pacar_exception_blocks_instead_of_raising(with_session: bool) -> None:
+    processor, verifier = _processor_with_real_pacar()
+    boom = AsyncMock(side_effect=ConnectionError("redis down"))
+    verifier.assistant.analyze_message_impact = boom
+    verifier.assistant.ainvoke_multi_turn = boom
+    extra = {"session_id": "sess-x", "tenant_id": "tenant-a"} if with_session else {}
+
+    result = await processor.process(_task_request(**extra))
+
+    _assert_pacar_blocked(result)
+    assert result.metadata.get("sdpc_pacar_error") == "ConnectionError"

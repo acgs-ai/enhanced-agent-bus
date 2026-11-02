@@ -329,7 +329,18 @@ class VerificationOrchestrator:
             task_names.append("pacar")
 
         if tasks:
-            results = await asyncio.gather(*tasks)
+            # Fail closed: a verifier that raises yields an invalid verdict instead of an
+            # exception escaping process(). Cancellation and other BaseExceptions propagate.
+            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+            results: list[Any] = []
+            for name, raw in zip(task_names, raw_results, strict=True):
+                if isinstance(raw, BaseException):
+                    if not isinstance(raw, Exception):
+                        raise raw
+                    logger.warning(f"SDPC {name} verifier failed: {type(raw).__name__}")
+                    sdpc_metadata[f"sdpc_{name}_error"] = type(raw).__name__
+                    raw = {"is_valid": False, "confidence": 0.0}
+                results.append(raw)
             for name, result in zip(task_names, results, strict=True):
                 if name == "asc":
                     sdpc_metadata["sdpc_intent"] = intent.value
