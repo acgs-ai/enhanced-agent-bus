@@ -32,6 +32,16 @@ from .performance_monitor import timed
 from .validators import ValidationResult
 
 logger = get_logger(__name__)
+
+PACAR_IMPACT_THRESHOLD = 0.8
+
+
+def message_requires_pacar(msg: AgentMessage) -> bool:
+    """Single routing predicate for PACAR (shared by SDPC routing and cache bypass)."""
+    impact_score = getattr(msg, "impact_score", None) or 0.0
+    return impact_score > PACAR_IMPACT_THRESHOLD or msg.message_type == MessageType.TASK_REQUEST
+
+
 _DecoratorParams = ParamSpec("_DecoratorParams")
 _DecoratorReturn = TypeVar("_DecoratorReturn")
 
@@ -190,6 +200,17 @@ class VerificationOrchestrator:
                     _ = (args, kwargs)
                     return {"is_valid": True, "results": []}
 
+            class _NoOpPACARVerifier:
+                """PACAR is enforcing; without SDPC deps it must deny, not approve."""
+
+                async def verify(self, *args: object, **kwargs: object) -> JSONDict:
+                    _ = (args, kwargs)
+                    return {"is_valid": False, "confidence": 0.0, "results": []}
+
+                async def verify_with_context(self, *args: object, **kwargs: object) -> JSONDict:
+                    _ = (args, kwargs)
+                    return {"is_valid": False, "confidence": 0.0, "results": []}
+
             class _NoOpEvolutionController:
                 """Fail-safe NoOp: logs all mutation attempts, allows none."""
 
@@ -210,7 +231,7 @@ class VerificationOrchestrator:
             self.intent_classifier = _NoOpIntentClassifier(config=config)
             self.asc_verifier = _NoOpVerifier()
             self.graph_check = _NoOpVerifier()
-            self.pacar_verifier = _NoOpVerifier()
+            self.pacar_verifier = _NoOpPACARVerifier()
             self.evolution_controller = _NoOpEvolutionController()
             self.ampo_engine = _NoOpAMPOEngine(evolution_controller=self.evolution_controller)
             self._IntentType = _IntentType
@@ -298,7 +319,7 @@ class VerificationOrchestrator:
             ]
             or impact_score >= 0.8
         )
-        needs_pacar = impact_score > 0.8 or msg.message_type == MessageType.TASK_REQUEST
+        needs_pacar = message_requires_pacar(msg)
 
         tasks = []
         task_names: list[str] = []
@@ -352,7 +373,8 @@ class VerificationOrchestrator:
                     sdpc_metadata["sdpc_graph_results"] = result.get("results", [])
                     verifications["graph"] = sdpc_metadata["sdpc_graph_grounded"]
                 elif name == "pacar":
-                    sdpc_metadata["sdpc_pacar_valid"] = result.get("is_valid", False)
+                    # Fail closed: anything but an explicit boolean True is invalid.
+                    sdpc_metadata["sdpc_pacar_valid"] = result.get("is_valid") is True
                     sdpc_metadata["sdpc_pacar_confidence"] = result.get("confidence", 0.0)
                     verifications["pacar"] = sdpc_metadata["sdpc_pacar_valid"]
                     if "critique" in result:

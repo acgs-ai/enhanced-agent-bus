@@ -107,9 +107,9 @@ class VerificationCoordinator:
             )
             return pqc_failure_result
 
-        # PACAR is enforcing: an invalid verdict rejects before any handler runs. Only an
-        # explicit False is a verdict; absence means PACAR was not routed for this message.
-        if sdpc_metadata.get("sdpc_pacar_valid") is False:
+        # PACAR is enforcing: when PACAR ran (key present), anything but an explicit True
+        # rejects before any handler runs. Absence means PACAR was not routed.
+        if "sdpc_pacar_valid" in sdpc_metadata and sdpc_metadata["sdpc_pacar_valid"] is not True:
             self._increment_failed_count()
             pacar_failure = ValidationResult(
                 is_valid=False,

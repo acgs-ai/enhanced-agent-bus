@@ -17,6 +17,16 @@ sys.modules.setdefault("enhanced_agent_bus.sdpc.pacar_verifier", sys.modules[__n
 _ACCEPTABLE_RISK_LEVELS = frozenset({"low", "medium"})
 
 
+def _tenant_scoped_session(tenant_id: str | None, session_id: str) -> str:
+    """Session-store key component isolated per tenant.
+
+    Length-prefixing the tenant keeps ("a:b", "c") and ("a", "b:c") distinct, so one tenant
+    can never read or append to another tenant's PACAR conversation history.
+    """
+    tenant = tenant_id or ""
+    return f"{len(tenant)}:{tenant}:{session_id}"
+
+
 class _DefaultAssistant:
     async def analyze_message_impact(self, content: str) -> dict[str, Any]:
         return {
@@ -71,7 +81,8 @@ class PACARVerifier:
         session_id: str,
         tenant_id: str | None = None,
     ) -> dict[str, Any]:
-        redis_key = f"pacar:session:{session_id}"
+        scoped_session = _tenant_scoped_session(tenant_id, session_id)
+        redis_key = f"pacar:session:{scoped_session}"
         conversation: dict[str, Any]
         if self.redis_client is not None:
             existing = await self.redis_client.get(redis_key)
@@ -87,7 +98,7 @@ class PACARVerifier:
                 }
             )
         else:
-            state = await self.manager.get_state(session_id)
+            state = await self.manager.get_state(scoped_session)
             if hasattr(state, "model_dump") and callable(state.model_dump):
                 dumped = state.model_dump()
                 conversation = dumped if isinstance(dumped, dict) else {}
@@ -124,7 +135,7 @@ class PACARVerifier:
         if len(conversation["messages"]) > 50:
             conversation["messages"] = conversation["messages"][-50:]
         conversation["session_id"] = session_id
-        conversation["tenant_id"] = tenant_id or conversation.get("tenant_id")
+        conversation["tenant_id"] = tenant_id  # key is tenant-scoped; never inherit another
         conversation["updated_at"] = datetime.now(UTC).isoformat()
 
         if self.redis_client is not None:
@@ -132,16 +143,16 @@ class PACARVerifier:
 
         if self.manager is not None:
             await self.manager.add_message(
-                session_id, MessageRole.USER, content, {"intent": original_intent}
+                scoped_session, MessageRole.USER, content, {"intent": original_intent}
             )
             await self.manager.add_message(
-                session_id,
+                scoped_session,
                 MessageRole.ASSISTANT,
                 "\n".join(multi_turn.get("reasoning", [])),
                 {"phase": "critique"},
             )
             await self.manager.add_message(
-                session_id,
+                scoped_session,
                 MessageRole.SYSTEM,
                 decision,
                 {"phase": "decision"},
