@@ -310,13 +310,22 @@ class VerificationOrchestrator:
             task_names.append("graph")
 
         if needs_pacar:
-            tasks.append(
-                self.pacar_verifier.verify(
-                    content_str,
-                    intent.value,
-                    session_id=getattr(msg, "session_id", None),
+            # PACARVerifier.verify() is single-turn and takes no session_id; session-aware
+            # multi-turn verification lives in verify_with_context(). Passing session_id to
+            # verify() raised TypeError, so every PACAR-routed message failed after retries.
+            session_id = getattr(msg, "session_id", None)
+            verify_with_context = getattr(self.pacar_verifier, "verify_with_context", None)
+            if session_id and callable(verify_with_context):
+                tasks.append(
+                    verify_with_context(
+                        content_str,
+                        intent.value,
+                        session_id=session_id,
+                        tenant_id=getattr(msg, "tenant_id", None),
+                    )
                 )
-            )
+            else:
+                tasks.append(self.pacar_verifier.verify(content_str, intent.value))
             task_names.append("pacar")
 
         if tasks:
