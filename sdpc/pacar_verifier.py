@@ -133,12 +133,18 @@ class PACARVerifier:
             content, conversation.get("messages", [])
         )
         # Fail closed: a missing or empty decision is treated as "reject", never "approve".
-        decision = multi_turn.get("recommended_decision") or "reject"
+        reviewer_decision = multi_turn.get("recommended_decision") or "reject"
         # Same bar as single-turn verify(): an "approve" must also carry an explicit
         # low/medium risk_level. "approve" with high/critical/missing risk is invalid.
         risk_ok = multi_turn.get("risk_level") in _ACCEPTABLE_RISK_LEVELS
+        is_valid = reviewer_decision == "approve" and risk_ok
+        # Record the decision actually enforced, so session history (fed back to the
+        # reviewer next turn) and audit never label a blocked message "approve".
+        decision = (
+            "reject" if reviewer_decision == "approve" and not is_valid else reviewer_decision
+        )
         verification_result = {
-            "is_valid": decision == "approve" and risk_ok,
+            "is_valid": is_valid,
             "confidence": multi_turn.get("confidence", 0.0),
         }
         entry = {
@@ -181,6 +187,7 @@ class PACARVerifier:
             "reasoning": multi_turn.get("reasoning", []),
             "mitigations": multi_turn.get("mitigations", []),
             "recommended_decision": decision,
+            "reviewer_decision": reviewer_decision,
             "consensus_reached": verification_result["is_valid"],
             "session_id": session_id,
             "message_count": len(conversation["messages"]),

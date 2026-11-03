@@ -381,6 +381,40 @@ async def test_multi_turn_approve_with_unacceptable_risk_blocks(pacar, risk) -> 
     _assert_pacar_blocked(result)
 
 
+@pytest.mark.parametrize(
+    ("reviewer", "risk", "enforced"),
+    [
+        ("approve", "high", "reject"),
+        ("approve", None, "reject"),
+        ("review", "low", "review"),
+        ("approve", "low", "approve"),
+    ],
+)
+async def test_recorded_decision_matches_enforced_outcome(pacar, reviewer, risk, enforced) -> None:
+    from enhanced_agent_bus.sdpc.conversation import MessageRole
+
+    processor, verifier = pacar
+    payload = {"recommended_decision": reviewer, "confidence": 0.9, "reasoning": ["x"]}
+    if risk is not None:
+        payload["risk_level"] = risk
+    verifier.assistant.ainvoke_multi_turn = AsyncMock(return_value=payload)
+    audit = SimpleNamespace(report_decision=AsyncMock())
+    verifier.audit_client = audit
+
+    result = await processor.process(_task_request(session_id="sess-rec", tenant_id="tenant-a"))
+
+    if enforced == "approve":
+        assert result.is_valid is True
+    else:
+        _assert_pacar_blocked(result)
+    system_entries = [c for _, role, c in verifier.manager.added if role == MessageRole.SYSTEM]
+    assert system_entries == [enforced]
+    audit.report_decision.assert_awaited_once()
+    reported = audit.report_decision.await_args.args[0]
+    assert reported["recommended_decision"] == enforced
+    assert reported["reviewer_decision"] == reviewer
+
+
 async def test_session_history_is_capped_per_session() -> None:
     from enhanced_agent_bus.sdpc.conversation import MessageRole
     from enhanced_agent_bus.sdpc.pacar_manager import _MAX_SESSION_MESSAGES
