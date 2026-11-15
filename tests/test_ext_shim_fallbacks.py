@@ -12,7 +12,7 @@ from types import ModuleType
 def test_top_level_package_imports_with_metrics_fallback() -> None:
     module = importlib.import_module("enhanced_agent_bus")
 
-    assert module.__version__ == "3.0.2"
+    assert module.__version__ == "3.1.0"
 
 
 def test_standalone_database_session_fallback_provides_orm_base() -> None:

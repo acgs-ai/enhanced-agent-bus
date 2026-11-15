@@ -1,7 +1,7 @@
 """ACGS-2 Enhanced Agent Communication Bus / Constitutional Hash: 608508a9bd224290"""
 
 CONSTITUTIONAL_HASH = "608508a9bd224290"
-__version__ = "3.0.2"
+__version__ = "3.1.0"
 __constitutional_hash__ = "608508a9bd224290"
 
 # Single shared state dict: maps attr names to resolved values.
