@@ -625,8 +625,9 @@ class TestSendMessage:
             bus._message_validator, "validate_and_normalize_tenant", return_value=True
         ):
             result = await bus.send_message(msg)
-        # Degraded fallback returns is_valid=True
-        assert result.is_valid is True
+        # Degraded fallback fails closed unconditionally
+        assert result.is_valid is False
+        assert result.decision == "DENY"
         assert result.metadata.get("governance_mode") == "DEGRADED"
 
     async def test_send_message_test_agent_bypass(self) -> None:

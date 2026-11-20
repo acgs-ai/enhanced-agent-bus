@@ -96,39 +96,14 @@ class MessageHandler:
 
     async def process_message_with_fallback(self, msg: AgentMessage) -> ValidationResult:
         """
-        Process message through processor with graceful degradation.
+        Process message through processor with fail-closed fallback.
 
         Attempts to process the message through the configured MessageProcessor.
-        If processing fails due to any exception, falls back to DEGRADED governance
-        mode where messages that already passed prior validation checks (constitutional
-        hash, tenant isolation, adaptive governance) are allowed through.
-
-        Args:
-            msg: The AgentMessage to process. Should have already passed
-                constitutional hash and tenant validation.
-
-        Returns:
-            ValidationResult: Processing result with one of:
-                - Normal validation result from processor (happy path)
-                - DEGRADED mode result with is_valid=True and metadata indicating
-                  fallback was triggered (degraded path)
-
-        Degraded Mode Behavior:
-            When the processor fails, returns a ValidationResult with:
-            - is_valid=True (message was pre-validated)
-            - decision="ALLOW"
-            - status=MessageStatus.VALIDATED
-            - metadata containing governance_mode="DEGRADED" and fallback_reason
-
-        Performance:
-            - Normal path: Depends on processor complexity
-            - Degraded path: Near-instant return with minimal overhead
+        If processing fails due to any exception, fails closed in DEGRADED
+        governance mode with ``is_valid=False``, ``decision="DENY"``, and
+        ``status=MessageStatus.FAILED``.
 
         Constitutional Hash: 608508a9bd224290
-
-        Note:
-            This graceful degradation ensures system availability while
-            maintaining constitutional compliance through prior validation.
         """
         return (await self.decide_message_governance(msg)).result
 
@@ -141,29 +116,13 @@ class MessageHandler:
         try:
             result = await self._processor.process(msg)
         except Exception as e:
-            logger.warning(f"Processor fallback activated: {e}")
-            metadata = msg.metadata if isinstance(getattr(msg, "metadata", None), dict) else {}
-            has_explicit_prevalidation = bool(
-                metadata.get("prevalidated")
-                or metadata.get("prevalidated_result")
-                or metadata.get("validated_by_agent")
-                or metadata.get("independent_validator_id")
-            )
-            if not has_explicit_prevalidation:
-                result = ValidationResult(
-                    is_valid=False,
-                    errors=["Processor fallback denied: message lacks explicit prevalidation"],
-                    metadata={"governance_mode": "DEGRADED", "fallback_reason": str(e)},
-                    decision="DENY",
-                    status=MessageStatus.FAILED,
-                    constitutional_hash=CONSTITUTIONAL_HASH,
-                )
-                return self._build_governance_decision(result)
+            logger.warning(f"Processor fallback activated (failing closed): {e}")
             result = ValidationResult(
-                is_valid=True,
+                is_valid=False,
+                errors=["Processor fallback denied: governance verification unavailable"],
                 metadata={"governance_mode": "DEGRADED", "fallback_reason": str(e)},
-                decision="ALLOW",
-                status=MessageStatus.VALIDATED,
+                decision="DENY",
+                status=MessageStatus.FAILED,
                 constitutional_hash=CONSTITUTIONAL_HASH,
             )
         return self._build_governance_decision(result)
