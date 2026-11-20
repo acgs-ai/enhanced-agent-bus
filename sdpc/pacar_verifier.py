@@ -6,14 +6,17 @@ from datetime import UTC, datetime
 from typing import Any
 
 from enhanced_agent_bus.config import BusConfiguration
+from enhanced_agent_bus.observability.structured_logging import get_logger
 
 from .conversation import MessageRole
 from .pacar_manager import PACARManager
 
 sys.modules.setdefault("enhanced_agent_bus.sdpc.pacar_verifier", sys.modules[__name__])
 
-# PACAR verdicts are advisory (recorded in result metadata as sdpc_pacar_*; they do not
-# change MessageProcessor accept/reject). Even so, the verdict itself must fail closed.
+logger = get_logger(__name__)
+
+# PACAR verdicts are enforcing: VerificationCoordinator denies messages that fail PACAR
+# verification, and the verdict itself must fail closed.
 _ACCEPTABLE_RISK_LEVELS = frozenset({"low", "medium"})
 
 
@@ -57,14 +60,29 @@ class _DefaultAssistant:
         }
 
 
-def get_llm_assistant() -> Any:
+def get_llm_assistant(config: BusConfiguration | None = None) -> Any:
+    factory = getattr(config, "pacar_assistant_factory", None)
+    if callable(factory):
+        try:
+            assistant = factory()
+        except Exception as exc:
+            logger.warning(
+                f"PACAR assistant factory raised {type(exc).__name__}; "
+                "falling back to _DefaultAssistant."
+            )
+            return _DefaultAssistant()
+        if assistant is not None:
+            return assistant
+        logger.warning(
+            "PACAR assistant factory returned None; falling back to _DefaultAssistant."
+        )
     return _DefaultAssistant()
 
 
 class PACARVerifier:
     def __init__(self, config: BusConfiguration | None = None) -> None:
         self.config = config or BusConfiguration()
-        self.assistant = get_llm_assistant()
+        self.assistant = get_llm_assistant(self.config)
         self.manager = PACARManager(config=self.config)
         self.redis_client: Any | None = None
         self.audit_client: Any | None = None

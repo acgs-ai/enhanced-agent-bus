@@ -458,3 +458,121 @@ async def test_asc_verifier_accepts_low_risk() -> None:
     result = await verifier.verify("The meeting is on 3 May in Paris.", IntentType.FACTUAL)
 
     assert result["is_valid"] is True
+
+
+def _wire_fake_session_stores(monkeypatch: pytest.MonkeyPatch, verifier: PACARVerifier) -> None:
+    monkeypatch.setattr(verifier, "manager", _FakeManager())
+    monkeypatch.setattr(verifier, "redis_client", None)
+    monkeypatch.setattr(verifier, "audit_client", None)
+
+
+@pytest.mark.parametrize("extra", [{}, {"session_id": "sess-no-factory", "tenant_id": "tenant-a"}])
+async def test_processor_without_factory_uses_default_assistant_and_denies(
+    monkeypatch: pytest.MonkeyPatch,
+    extra: dict[str, object],
+) -> None:
+    import enhanced_agent_bus.builder as builder_mod
+    from enhanced_agent_bus.config import BusConfiguration
+    from enhanced_agent_bus.sdpc.pacar_verifier import _DefaultAssistant
+
+    monkeypatch.setattr(builder_mod, "_cached_sdpc", None)
+    config = BusConfiguration(enable_maci=False)
+    processor = MessageProcessor(config=config, enable_maci=False)
+    verifier = processor.pacar_verifier
+    if not isinstance(verifier, PACARVerifier):
+        pytest.fail("SDPC unavailable: processor uses no-op PACAR verifier")
+    assert isinstance(verifier.assistant, _DefaultAssistant)
+    _wire_fake_session_stores(monkeypatch, verifier)
+
+    result = await processor.process(_task_request(**extra))
+
+    _assert_pacar_blocked(result)
+
+
+@pytest.mark.parametrize("extra", [{}, {"session_id": "sess-custom", "tenant_id": "tenant-a"}])
+async def test_processor_with_custom_approving_factory_allows(
+    monkeypatch: pytest.MonkeyPatch,
+    extra: dict[str, object],
+) -> None:
+    import enhanced_agent_bus.builder as builder_mod
+    from enhanced_agent_bus.config import BusConfiguration
+
+    monkeypatch.setattr(builder_mod, "_cached_sdpc", None)
+    config = BusConfiguration(enable_maci=False, pacar_assistant_factory=_approving_assistant)
+    processor = MessageProcessor(config=config, enable_maci=False)
+    verifier = processor.pacar_verifier
+    if not isinstance(verifier, PACARVerifier):
+        pytest.fail("SDPC unavailable: processor uses no-op PACAR verifier")
+    _wire_fake_session_stores(monkeypatch, verifier)
+
+    result = await processor.process(_task_request(**extra))
+
+    assert result.is_valid, result.errors
+    assert result.metadata.get("sdpc_pacar_valid") is True
+
+
+async def test_factory_returning_none_warns_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import enhanced_agent_bus.builder as builder_mod
+    from enhanced_agent_bus.config import BusConfiguration
+    from enhanced_agent_bus.sdpc import pacar_verifier as pv_mod
+    from enhanced_agent_bus.sdpc.pacar_verifier import _DefaultAssistant
+
+    warnings: list[str] = []
+    monkeypatch.setattr(pv_mod.logger, "warning", lambda msg, *a, **kw: warnings.append(str(msg)))
+    monkeypatch.setattr(builder_mod, "_cached_sdpc", None)
+
+    config = BusConfiguration(enable_maci=False, pacar_assistant_factory=lambda: None)
+    processor = MessageProcessor(config=config, enable_maci=False)
+    verifier = processor.pacar_verifier
+    if not isinstance(verifier, PACARVerifier):
+        pytest.fail("SDPC unavailable: processor uses no-op PACAR verifier")
+    assert isinstance(verifier.assistant, _DefaultAssistant)
+    assert any("returned None" in w for w in warnings)
+    _wire_fake_session_stores(monkeypatch, verifier)
+
+    result = await processor.process(_task_request())
+
+    _assert_pacar_blocked(result)
+
+
+async def test_factory_raising_warns_without_secrets_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import enhanced_agent_bus.builder as builder_mod
+    from enhanced_agent_bus.config import BusConfiguration
+    from enhanced_agent_bus.sdpc import pacar_verifier as pv_mod
+    from enhanced_agent_bus.sdpc.pacar_verifier import _DefaultAssistant
+
+    warnings: list[str] = []
+    monkeypatch.setattr(pv_mod.logger, "warning", lambda msg, *a, **kw: warnings.append(str(msg)))
+    monkeypatch.setattr(builder_mod, "_cached_sdpc", None)
+
+    def _boom() -> object:
+        raise RuntimeError("api_key=sk-super-secret-value")
+
+    config = BusConfiguration(enable_maci=False, pacar_assistant_factory=_boom)
+    processor = MessageProcessor(config=config, enable_maci=False)
+    verifier = processor.pacar_verifier
+    if not isinstance(verifier, PACARVerifier):
+        pytest.fail("SDPC unavailable: processor uses no-op PACAR verifier")
+    assert isinstance(verifier.assistant, _DefaultAssistant)
+    assert any("RuntimeError" in w for w in warnings)
+    assert all("sk-super-secret-value" not in w for w in warnings)
+    _wire_fake_session_stores(monkeypatch, verifier)
+
+    result = await processor.process(_task_request())
+
+    _assert_pacar_blocked(result)
+
+
+def test_get_llm_assistant_backward_compatible() -> None:
+    from enhanced_agent_bus.config import BusConfiguration
+    from enhanced_agent_bus.sdpc.pacar_verifier import _DefaultAssistant, get_llm_assistant
+
+    assert isinstance(get_llm_assistant(), _DefaultAssistant)
+    assert isinstance(get_llm_assistant(None), _DefaultAssistant)
+    assert isinstance(get_llm_assistant(BusConfiguration()), _DefaultAssistant)
+    assert isinstance(get_llm_assistant(SimpleNamespace()), _DefaultAssistant)  # type: ignore[arg-type]
+    assert isinstance(PACARVerifier().assistant, _DefaultAssistant)
