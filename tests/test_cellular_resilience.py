@@ -48,8 +48,9 @@ class TestCellularResilience:
 
             result = await bus.send_message(message)
 
-            # Should still be valid because of DEGRADED mode fallback (StaticHashValidationStrategy)
-            assert result.is_valid
+            # Degraded mode fails closed even when sender supplies prevalidated metadata
+            assert result.is_valid is False
+            assert result.decision == "DENY"
             assert result.metadata.get("governance_mode") == "DEGRADED"
             assert "Infrastructure Crash simulated" in result.metadata.get("fallback_reason")
 
@@ -128,17 +129,18 @@ class TestCellularResilience:
 
             results = await asyncio.gather(*tasks)
 
-            # All messages should be valid (either via normal path or DEGRADED fallback)
-            for res in results:
-                assert res.is_valid
-
-            # Verify we actually hit DEGRADED mode for half of them
-            degraded_count = sum(
-                1 for r in results if r.metadata.get("governance_mode") == "DEGRADED"
-            )
-            assert degraded_count == 25
+            # Normal path succeeds; DEGRADED fallback fails closed
+            degraded_results = [
+                r for r in results if r.metadata.get("governance_mode") == "DEGRADED"
+            ]
+            normal_results = [
+                r for r in results if r.metadata.get("governance_mode") != "DEGRADED"
+            ]
+            assert len(degraded_results) == 25
+            assert all(not r.is_valid and r.decision == "DENY" for r in degraded_results)
+            assert all(r.is_valid for r in normal_results)
             logger.info(
-                "[Stress] 50 requests processed: 25 normal, 25 DEGRADED. Zero constitutional breaches."
+                "[Stress] 50 requests processed: 25 normal allowed, 25 DEGRADED failed closed."
             )
 
     async def test_isolated_mode_dependency_decoupling(self):

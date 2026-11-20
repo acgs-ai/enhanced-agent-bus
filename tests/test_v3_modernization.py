@@ -173,8 +173,8 @@ async def test_alignment_error_handling(bus):
         metadata={"prevalidated": True},
     )
 
-    # When processor fails with AlignmentViolationError, the bus falls back to DEGRADED mode
-    # In DEGRADED mode, if the hash matches, it currently ALLOWS the message for antifragility
+    # When processor fails with AlignmentViolationError, the bus enters DEGRADED mode and fails closed
     result = await bus.send_message(message)
     assert result.metadata["governance_mode"] == "DEGRADED"
-    assert result.is_valid is True  # Antifragile fallback allows if hash matches
+    assert result.is_valid is False
+    assert result.decision == "DENY"

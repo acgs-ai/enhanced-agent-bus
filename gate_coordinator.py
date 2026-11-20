@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Awaitable, Callable
 from typing import cast
 
@@ -57,6 +58,12 @@ class GateCoordinator:
         impact_score = getattr(msg, "impact_score", 0.0)
         if impact_score is None:
             impact_score = 0.0
+        elif (
+            isinstance(impact_score, bool)
+            or not isinstance(impact_score, (int, float))
+            or not math.isfinite(impact_score)
+        ):
+            return True
         if impact_score >= self._independent_validator_threshold:
             return True
         return msg.message_type in {
