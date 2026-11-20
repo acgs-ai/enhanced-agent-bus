@@ -8,7 +8,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from acgs_lite import Constitution
+
+# acgs-lite is optional: pip install "enhanced-agent-bus[acgs]"
+Constitution = pytest.importorskip("acgs_lite").Constitution
 
 from enhanced_agent_bus.governance_coordinator import GovernanceCoordinator
 from enhanced_agent_bus.governance_core import (
