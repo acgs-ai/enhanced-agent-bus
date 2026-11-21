@@ -1,0 +1,120 @@
+{
+  "constitutional_hash": "608508a9bd224290",
+  "seed": 1729,
+  "templates": {
+    "bad_constitutional_hash": {
+      "errors": [
+        "Constitutional hash mismatch"
+      ],
+      "is_valid": false,
+      "rejection_reason": "security_block",
+      "rejection_stage": "gate"
+    },
+    "exec_governance_proposal": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    },
+    "exec_query_status": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    },
+    "exec_reasoning_query": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    },
+    "invalid_tenant_format": {
+      "errors": [
+        "Tenant validation failed"
+      ],
+      "is_valid": false,
+      "rejection_reason": "security_block",
+      "rejection_stage": "gate"
+    },
+    "judge_audit_log": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    },
+    "judge_constitutional_validation": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    },
+    "legis_query_rules": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    },
+    "maci_exec_self_validate": {
+      "errors": [
+        "MACIRoleViolationError: [ID] [ID] [MACI_ROLE_VIOLATION] Agent 'exec-agent' (EXECUTIVE) cannot perform 'validate' - allowed roles: JUDICIAL"
+      ],
+      "is_valid": false,
+      "rejection_reason": null,
+      "rejection_stage": "strategy"
+    },
+    "maci_judge_propose": {
+      "errors": [
+        "MACIRoleViolationError: [ID] [ID] [MACI_ROLE_VIOLATION] Agent 'judge-agent' (JUDICIAL) cannot perform 'propose' - allowed roles: EXECUTIVE"
+      ],
+      "is_valid": false,
+      "rejection_reason": null,
+      "rejection_stage": "strategy"
+    },
+    "maci_legis_propose": {
+      "errors": [
+        "MACIRoleViolationError: [ID] [ID] [MACI_ROLE_VIOLATION] Agent 'legis-agent' (LEGISLATIVE) cannot perform 'propose' - allowed roles: EXECUTIVE"
+      ],
+      "is_valid": false,
+      "rejection_reason": null,
+      "rejection_stage": "strategy"
+    },
+    "maci_unknown_type_command": {
+      "errors": [
+        "MACIRoleViolationError: Unknown type"
+      ],
+      "is_valid": false,
+      "rejection_reason": null,
+      "rejection_stage": "strategy"
+    },
+    "maci_unregistered_agent": {
+      "errors": [
+        "MACIRoleViolationError: [ID] [ID] [MACI_ROLE_NOT_ASSIGNED] Agent 'rogue-agent' has no MACI role assigned for operation: propose"
+      ],
+      "is_valid": false,
+      "rejection_reason": null,
+      "rejection_stage": "strategy"
+    },
+    "prompt_injection": {
+      "errors": [
+        "Constitutional compliance check failed: Content blocked due to threat patterns in categories: meta_instruction, prompt_injection"
+      ],
+      "is_valid": false,
+      "rejection_reason": "security_block",
+      "rejection_stage": "gate"
+    },
+    "prompt_injection_governance": {
+      "errors": [
+        "Runtime guardrails blocked: PII detected: 1 potential matches"
+      ],
+      "is_valid": false,
+      "rejection_reason": "security_block",
+      "rejection_stage": "gate"
+    },
+    "repeat_cached_query": {
+      "errors": [],
+      "is_valid": true,
+      "rejection_reason": null,
+      "rejection_stage": null
+    }
+  }
+}
