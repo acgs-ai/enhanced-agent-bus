@@ -17,14 +17,17 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from enhanced_agent_bus._compat.security.auth import UserClaims, get_current_user
 from enhanced_agent_bus.api.dependencies import get_agent_bus
 from enhanced_agent_bus.api.message_lifecycle import InMemoryMessageStatusStore
 from enhanced_agent_bus.api.rate_limiting import limiter
-from enhanced_agent_bus.api.routes.messages import router
+from enhanced_agent_bus.api.routes.messages import (
+    _reject_spoofable_validator_metadata_in_prod,
+    router,
+)
 from enhanced_agent_bus.bus.messaging import MessageHandler
 from enhanced_agent_bus.config import BusConfiguration
 from enhanced_agent_bus.gate_coordinator import GateCoordinator
@@ -163,6 +166,30 @@ def test_send_message_allows_spoofable_metadata_in_dev(
     )
 
     assert response.status_code == 202
+
+
+@pytest.mark.parametrize("bad_metadata", ["validated_by_agent", ["validated_by_agent"], 123])
+def test_reject_spoofable_metadata_rejects_non_mapping_in_prod(
+    monkeypatch: pytest.MonkeyPatch,
+    bad_metadata: object,
+) -> None:
+    monkeypatch.setenv("EAB_PROFILE", "prod")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _reject_spoofable_validator_metadata_in_prod(bad_metadata)  # type: ignore[arg-type]
+
+    assert exc_info.value.status_code == 400
+    assert "mapping" in exc_info.value.detail
+
+
+@pytest.mark.parametrize("ok_metadata", [None, {}, {"benign_trace": "trace-123"}])
+def test_reject_spoofable_metadata_accepts_none_and_empty_mapping_in_prod(
+    monkeypatch: pytest.MonkeyPatch,
+    ok_metadata: dict[str, object] | None,
+) -> None:
+    monkeypatch.setenv("EAB_PROFILE", "prod")
+
+    _reject_spoofable_validator_metadata_in_prod(ok_metadata)
 
 
 # ---------------------------------------------------------------------------

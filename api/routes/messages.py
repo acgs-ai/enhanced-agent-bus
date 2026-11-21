@@ -8,6 +8,7 @@ This module provides message sending and status endpoints.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, cast
 
 from fastapi import (
@@ -194,7 +195,14 @@ def _is_non_empty_metadata_value(value: object) -> bool:
 
 def _reject_spoofable_validator_metadata_in_prod(metadata: JSONDict | None) -> None:
     """Reject caller-supplied spoofable validator metadata keys in production."""
-    if not is_prod() or not metadata:
+    if not is_prod() or metadata is None:
+        return
+    if not isinstance(metadata, Mapping):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Message metadata must be a mapping in production",
+        )
+    if not metadata:
         return
     supplied = [
         key
