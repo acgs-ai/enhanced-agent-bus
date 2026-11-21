@@ -33,7 +33,7 @@ class TestModuleMetadata:
 
     def test_version_string(self):
         bus = get_bus()
-        assert bus.__version__ == "3.0.2"
+        assert bus.__version__ == "3.1.0"
 
     def test_constitutional_hash_attribute(self):
         bus = get_bus()

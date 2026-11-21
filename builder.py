@@ -5,6 +5,7 @@ Isolates complex initialization and cross-layer instantiation logic.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from enhanced_agent_bus._compat.security.pqc_crypto import PQCCryptoService
@@ -82,6 +83,17 @@ def build_sdpc_verifiers(config: BusConfiguration) -> SDPCVerifiers:
                 _ = (args, kwargs)
                 return {"valid": True}
 
+            async def verify_entities(self, *args: object, **kwargs: object) -> JSONDict:
+                _ = (args, kwargs)
+                return {"is_valid": False, "results": []}
+
+        class _IntentType(str, Enum):
+            FACTUAL = "factual"
+            CREATIVE = "creative"
+            REASONING = "reasoning"
+            GENERAL = "general"
+            UNKNOWN = "unknown"
+
         class _NoOpIntentClassifier:
             def __init__(self, config: object) -> None:
                 self.config = config
@@ -89,6 +101,12 @@ def build_sdpc_verifiers(config: BusConfiguration) -> SDPCVerifiers:
             async def classify_intent(self, *args: object, **kwargs: object) -> str:
                 _ = (args, kwargs)
                 return "unknown"
+
+            async def classify_async(
+                self, content: str = "", context: JSONDict | None = None
+            ) -> _IntentType:
+                _ = (content, context)
+                return _IntentType.UNKNOWN
 
         class _NoOpEvolutionController:
             """Fail-safe NoOp: logs all mutation attempts, allows none."""
@@ -110,9 +128,6 @@ def build_sdpc_verifiers(config: BusConfiguration) -> SDPCVerifiers:
             def __init__(self, evolution_controller: object) -> None:
                 self.evolution_controller = evolution_controller
 
-        class _IntentType:
-            UNKNOWN = "unknown"
-
         class _NoOpPACARVerifier:
             """PACAR is enforcing; without SDPC deps it must deny, not approve."""
 
@@ -123,7 +138,6 @@ def build_sdpc_verifiers(config: BusConfiguration) -> SDPCVerifiers:
             async def verify_with_context(self, *args: object, **kwargs: object) -> JSONDict:
                 _ = (args, kwargs)
                 return {"is_valid": False, "confidence": 0.0}
-
         intent_classifier = _NoOpIntentClassifier(config=config)
         asc_verifier = _NoOpVerifier()
         graph_check = _NoOpVerifier()

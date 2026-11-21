@@ -738,8 +738,9 @@ class TestIntegrationWorkflowE2E:
 
             result = await bus.send_message(message)
 
-            # Should succeed via degraded mode (static hash validation)
-            assert result.is_valid is True
+            # Should fail closed in degraded mode even with prevalidated metadata
+            assert result.is_valid is False
+            assert result.decision == "DENY"
             assert result.metadata.get("governance_mode") == "DEGRADED"
         finally:
             await bus.stop()

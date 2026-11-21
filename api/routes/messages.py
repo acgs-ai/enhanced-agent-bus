@@ -63,6 +63,13 @@ SPOOFABLE_VALIDATOR_HEADERS = (
     "X-Independent-Validator-ID",
     "X-Validation-Stage",
 )
+SPOOFABLE_VALIDATOR_METADATA_KEYS = (
+    "validated_by_agent",
+    "independent_validator_id",
+    "validation_stage",
+    "prevalidated",
+    "prevalidated_result",
+)
 
 
 class ProcessResultProtocol(Protocol):
@@ -174,6 +181,32 @@ def _reject_spoofable_validator_headers_in_prod(
             detail=(
                 "Independent validation metadata must be supplied as a "
                 f"verifiable receipt in production; rejected headers: {', '.join(supplied)}"
+            ),
+        )
+
+
+def _is_non_empty_metadata_value(value: object) -> bool:
+    """Return True when a metadata value is non-empty or truthy."""
+    if isinstance(value, str):
+        return bool(value.strip())
+    return bool(value)
+
+
+def _reject_spoofable_validator_metadata_in_prod(metadata: JSONDict | None) -> None:
+    """Reject caller-supplied spoofable validator metadata keys in production."""
+    if not is_prod() or not metadata:
+        return
+    supplied = [
+        key
+        for key in SPOOFABLE_VALIDATOR_METADATA_KEYS
+        if key in metadata and _is_non_empty_metadata_value(metadata.get(key))
+    ]
+    if supplied:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Independent validation metadata must be supplied as a "
+                f"verifiable receipt in production; rejected metadata keys: {', '.join(supplied)}"
             ),
         )
 
@@ -414,6 +447,7 @@ async def send_message(
         independent_validator_id,
         validation_stage,
     )
+    _reject_spoofable_validator_metadata_in_prod(message_request.metadata)
 
     msg_type = _resolve_message_type(message_request.message_type)
     priority = _resolve_priority(message_request.priority)

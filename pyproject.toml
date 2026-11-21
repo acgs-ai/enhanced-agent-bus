@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "enhanced-agent-bus"
-version = "3.0.2"
+version = "3.1.0"
 description = "ACGS-2 Enhanced Agent Bus with Constitutional Compliance"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,6 +39,9 @@ dependencies = [
     "cryptography>=44.0.2",    # audit_client + signing_provider import it outside the [pqc] path
     "sqlalchemy>=2.0.0",       # imported outside the [postgres] path
 ]
+
+[project.scripts]
+eab = "enhanced_agent_bus.cli:main"
 
 [project.urls]
 Homepage = "https://acgs.ai"
@@ -83,6 +86,9 @@ postgres = [
 ]
 messaging = [
     "aiokafka>=0.10.0",
+]
+acgs = [
+    "acgs-lite>=4,<5",
 ]
 
 # Explicit, not `[tool.setuptools.packages.find]`.  With the flat layout below

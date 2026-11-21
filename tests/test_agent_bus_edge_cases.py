@@ -180,10 +180,9 @@ class TestDegradedMode:
     async def test_degraded_mode_still_validates_hash(
         self, started_agent_bus, constitutional_hash, mock_processor
     ):
-        """Test that degraded mode still validates constitutional hash."""
+        """Test that degraded mode fails closed even when prevalidated metadata is set."""
         mock_processor.process = AsyncMock(side_effect=Exception("Processor failure"))
 
-        # Message with correct hash should pass
         message_valid = AgentMessage(
             message_id=str(uuid.uuid4()),
             from_agent="sender",
@@ -197,7 +196,9 @@ class TestDegradedMode:
         )
 
         result = await started_agent_bus.send_message(message_valid)
-        assert result.is_valid is True
+        assert result.is_valid is False
+        assert result.decision == "DENY"
+        assert result.metadata.get("governance_mode") == "DEGRADED"
 
     async def test_degraded_mode_rejects_invalid_hash(self, started_agent_bus, mock_processor):
         """Test that degraded mode rejects invalid constitutional hash."""

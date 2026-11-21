@@ -261,10 +261,13 @@ class TestMessageHandlerFallback:
         assert decision.allow_delivery is True
         assert decision.result.is_valid is True
 
-    async def test_fallback_allows_when_explicitly_prevalidated(self, sample_message):
+    async def test_fallback_denies_even_when_prevalidated_metadata_supplied(self, sample_message):
         processor = MagicMock()
         processor.process = AsyncMock(side_effect=RuntimeError("processor down"))
         sample_message.metadata["prevalidated"] = True
+        sample_message.metadata["prevalidated_result"] = {"is_valid": True}
+        sample_message.metadata["validated_by_agent"] = "validator-1"
+        sample_message.metadata["independent_validator_id"] = "indep-1"
         handler = MessageHandler(
             processor=processor,
             router_component=MagicMock(),
@@ -281,8 +284,11 @@ class TestMessageHandlerFallback:
 
         result = await handler.process_message_with_fallback(sample_message)
 
-        assert result.is_valid is True
-        assert result.decision == "ALLOW"
+        assert result.is_valid is False
+        assert result.decision == "DENY"
+        assert result.status == MessageStatus.FAILED
+        assert result.metadata.get("governance_mode") == "DEGRADED"
+        assert result.metadata.get("fallback_reason") == "processor down"
 
     async def test_finalize_message_delivery_accepts_governance_decision(self, sample_message):
         validator = MagicMock()

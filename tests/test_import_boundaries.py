@@ -2,7 +2,7 @@
 
 enhanced_agent_bus is a service-package. It may import from acgs_lite,
 src.core.shared, and acgs_deliberation. It must not import from:
-  - constitutional_swarm (wrong direction — swarm uses EAB, not vice versa)
+  - constitutional_swarm (EAB optionally imports swarm; swarm must not import EAB)
   - mhc (lateral/higher-level)
 
 The _compat/ subpackage intentionally re-exports src.core.shared.* during the
@@ -27,9 +27,12 @@ FORBIDDEN_PREFIXES = (
 )
 
 # Pre-existing violations being tracked.
-KNOWN_VIOLATIONS: set[str] = (
-    set()
-)  # Empty — governance_core.py no longer imports constitutional_swarm.
+# governance_core.py imports constitutional_swarm dynamically and optionally
+# (SWARM_AVAILABLE flag); the scanner sees it via string-literal import_module().
+KNOWN_VIOLATIONS: set[str] = {
+    # optional dynamic import, governance_core.py:40; SWARM_AVAILABLE flag
+    "governance_core.py: constitutional_swarm",
+}
 
 
 def _iter_imports(path: Path) -> list[str]:
@@ -44,7 +47,30 @@ def _iter_imports(path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.level == 0 and node.module is not None:
                 imports.append(node.module)
+        elif isinstance(node, ast.Call):
+            module = _dynamic_import_target(node)
+            if module is not None:
+                imports.append(module)
     return imports
+
+
+def _dynamic_import_target(node: ast.Call) -> str | None:
+    """Return the module for ``import_module("x")``, ``importlib.import_module("x")``
+    or ``__import__("x")`` when the first argument is a string literal."""
+    func = node.func
+    is_bare = isinstance(func, ast.Name) and func.id in ("import_module", "__import__")
+    is_qualified = (
+        isinstance(func, ast.Attribute)
+        and func.attr == "import_module"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "importlib"
+    )
+    if not (is_bare or is_qualified) or not node.args:
+        return None
+    first = node.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    return None
 
 
 def _is_excluded(path: Path) -> bool:
@@ -89,3 +115,26 @@ def test_runtime_source_import_boundaries() -> None:
         )
 
     assert not messages, "\n\n".join(messages)
+
+
+def test_iter_imports_sees_dynamic_import(tmp_path: Path) -> None:
+    f = tmp_path / "m.py"
+    f.write_text('from importlib import import_module\nx = import_module("constitutional_swarm")\n')
+    assert "constitutional_swarm" in _iter_imports(f)
+
+
+def test_iter_imports_ignores_non_literal_dynamic_import(tmp_path: Path) -> None:
+    f = tmp_path / "m.py"
+    f.write_text(
+        "from importlib import import_module\n"
+        'name = "constitutional_swarm"\n'
+        "x = import_module(name)\n"
+        'y = import_module(f"{name}.mesh")\n'
+    )
+    assert _iter_imports(f) == ["importlib"]
+
+
+def test_iter_imports_sees_qualified_dynamic_import(tmp_path: Path) -> None:
+    f = tmp_path / "m.py"
+    f.write_text('import importlib\nx = importlib.import_module("constitutional_swarm.mesh")\n')
+    assert "constitutional_swarm.mesh" in _iter_imports(f)
