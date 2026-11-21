@@ -35,6 +35,15 @@ next to the code and in operator-facing docs.
 ## Runtime Posture
 
 - Fail closed on auth, policy, MACI, OPA, tenant isolation, and governance decisions.
+- SDPC PACAR (`message_requires_pacar`: TASK_REQUEST or impact > 0.8) is enforcing: when
+  PACAR ran or the message requires it, anything but `sdpc_pacar_valid is True` (including a
+  missing verdict) rejects in `verification_coordinator.py` before handlers run. A stated
+  `recommended_decision` other than "approve" also rejects. Missing/unknown verdicts, verifier exceptions and the no-op stub
+  (SDPC deps missing) all deny. PACAR-routed messages bypass the validation cache, and
+  PACAR session history is keyed per tenant. `impact_score` is caller-supplied, so only
+  TASK_REQUEST routing is unconditional. The default `_DefaultAssistant` is a placeholder
+  that always denies, so PACAR-routed messages (every TASK_REQUEST) are rejected until a
+  real reviewer is wired via `sdpc/pacar_verifier.py:get_llm_assistant`.
 - Optional dependency shims (`_ext_*.py`, `_compat/`) must keep imports stable and
   provide explicit typed fallbacks.
 - Preserve public imports and wire contracts; this package has compatibility shims

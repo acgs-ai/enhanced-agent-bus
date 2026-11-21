@@ -32,6 +32,16 @@ from .performance_monitor import timed
 from .validators import ValidationResult
 
 logger = get_logger(__name__)
+
+PACAR_IMPACT_THRESHOLD = 0.8
+
+
+def message_requires_pacar(msg: AgentMessage) -> bool:
+    """Single routing predicate for PACAR (shared by SDPC routing and cache bypass)."""
+    impact_score = getattr(msg, "impact_score", None) or 0.0
+    return impact_score > PACAR_IMPACT_THRESHOLD or msg.message_type == MessageType.TASK_REQUEST
+
+
 _DecoratorParams = ParamSpec("_DecoratorParams")
 _DecoratorReturn = TypeVar("_DecoratorReturn")
 
@@ -190,6 +200,17 @@ class VerificationOrchestrator:
                     _ = (args, kwargs)
                     return {"is_valid": True, "results": []}
 
+            class _NoOpPACARVerifier:
+                """PACAR is enforcing; without SDPC deps it must deny, not approve."""
+
+                async def verify(self, *args: object, **kwargs: object) -> JSONDict:
+                    _ = (args, kwargs)
+                    return {"is_valid": False, "confidence": 0.0, "results": []}
+
+                async def verify_with_context(self, *args: object, **kwargs: object) -> JSONDict:
+                    _ = (args, kwargs)
+                    return {"is_valid": False, "confidence": 0.0, "results": []}
+
             class _NoOpEvolutionController:
                 """Fail-safe NoOp: logs all mutation attempts, allows none."""
 
@@ -210,7 +231,7 @@ class VerificationOrchestrator:
             self.intent_classifier = _NoOpIntentClassifier(config=config)
             self.asc_verifier = _NoOpVerifier()
             self.graph_check = _NoOpVerifier()
-            self.pacar_verifier = _NoOpVerifier()
+            self.pacar_verifier = _NoOpPACARVerifier()
             self.evolution_controller = _NoOpEvolutionController()
             self.ampo_engine = _NoOpAMPOEngine(evolution_controller=self.evolution_controller)
             self._IntentType = _IntentType
@@ -298,7 +319,7 @@ class VerificationOrchestrator:
             ]
             or impact_score >= 0.8
         )
-        needs_pacar = impact_score > 0.8 or msg.message_type == MessageType.TASK_REQUEST
+        needs_pacar = message_requires_pacar(msg)
 
         tasks = []
         task_names: list[str] = []
@@ -310,17 +331,37 @@ class VerificationOrchestrator:
             task_names.append("graph")
 
         if needs_pacar:
-            tasks.append(
-                self.pacar_verifier.verify(
-                    content_str,
-                    intent.value,
-                    session_id=getattr(msg, "session_id", None),
+            # PACARVerifier.verify() is single-turn and takes no session_id; session-aware
+            # multi-turn verification lives in verify_with_context(). Passing session_id to
+            # verify() raised TypeError, so every PACAR-routed message failed after retries.
+            session_id = getattr(msg, "session_id", None)
+            verify_with_context = getattr(self.pacar_verifier, "verify_with_context", None)
+            if session_id and callable(verify_with_context):
+                tasks.append(
+                    verify_with_context(
+                        content_str,
+                        intent.value,
+                        session_id=session_id,
+                        tenant_id=getattr(msg, "tenant_id", None),
+                    )
                 )
-            )
+            else:
+                tasks.append(self.pacar_verifier.verify(content_str, intent.value))
             task_names.append("pacar")
 
         if tasks:
-            results = await asyncio.gather(*tasks)
+            # Fail closed: a verifier that raises yields an invalid verdict instead of an
+            # exception escaping process(). Cancellation and other BaseExceptions propagate.
+            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+            results: list[Any] = []
+            for name, raw in zip(task_names, raw_results, strict=True):
+                if isinstance(raw, BaseException):
+                    if not isinstance(raw, Exception):
+                        raise raw
+                    logger.warning(f"SDPC {name} verifier failed: {type(raw).__name__}")
+                    sdpc_metadata[f"sdpc_{name}_error"] = type(raw).__name__
+                    raw = {"is_valid": False, "confidence": 0.0}
+                results.append(raw)
             for name, result in zip(task_names, results, strict=True):
                 if name == "asc":
                     sdpc_metadata["sdpc_intent"] = intent.value
@@ -332,7 +373,8 @@ class VerificationOrchestrator:
                     sdpc_metadata["sdpc_graph_results"] = result.get("results", [])
                     verifications["graph"] = sdpc_metadata["sdpc_graph_grounded"]
                 elif name == "pacar":
-                    sdpc_metadata["sdpc_pacar_valid"] = result.get("is_valid", False)
+                    # Fail closed: anything but an explicit boolean True is invalid.
+                    sdpc_metadata["sdpc_pacar_valid"] = result.get("is_valid") is True
                     sdpc_metadata["sdpc_pacar_confidence"] = result.get("confidence", 0.0)
                     verifications["pacar"] = sdpc_metadata["sdpc_pacar_valid"]
                     if "critique" in result:

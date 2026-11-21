@@ -201,6 +201,7 @@ from ..verification_coordinator import VerificationCoordinator
 from ..verification_orchestrator import (
     VerificationOrchestrator,
     VerificationRuntimeDependencies,
+    message_requires_pacar,
 )
 
 logger = get_logger(__name__)
@@ -894,9 +895,12 @@ class MessageProcessor:
                 )
                 return gate_result
 
-        # Phase 3: Check validation cache
+        # Phase 3: Check validation cache. PACAR-routed messages are never served from
+        # cache: PACAR is enforcing and session-aware, so a prior ALLOW must not replay.
         context.cache_key = self._compute_cache_key(msg)
-        cached = self._validation_cache.get(context.cache_key)
+        cached = (
+            None if message_requires_pacar(msg) else self._validation_cache.get(context.cache_key)
+        )
         if cached:
             cached_result = self._clone_validation_result(cached)
             context.cached_result = cached_result

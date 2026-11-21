@@ -6,54 +6,103 @@ from datetime import UTC, datetime
 from typing import Any
 
 from enhanced_agent_bus.config import BusConfiguration
+from enhanced_agent_bus.observability.structured_logging import get_logger
 
 from .conversation import MessageRole
 from .pacar_manager import PACARManager
 
 sys.modules.setdefault("enhanced_agent_bus.sdpc.pacar_verifier", sys.modules[__name__])
 
+logger = get_logger(__name__)
+
+# PACAR verdicts are enforcing: VerificationCoordinator denies messages that fail PACAR
+# verification, and the verdict itself must fail closed.
+_ACCEPTABLE_RISK_LEVELS = frozenset({"low", "medium"})
+
+
+def _tenant_scoped_session(tenant_id: str | None, session_id: str) -> str:
+    """Session-store key component isolated per tenant.
+
+    Length-prefixing the tenant keeps ("a:b", "c") and ("a", "b:c") distinct, so one tenant
+    can never read or append to another tenant's PACAR conversation history.
+    """
+    tenant = tenant_id or ""
+    return f"{len(tenant)}:{tenant}:{session_id}"
+
 
 class _DefaultAssistant:
+    """Placeholder reviewer: no real review is wired, so PACAR must deny.
+
+    PACAR is enforcing. Approving without a review would let every PACAR-routed
+    message (all TASK_REQUESTs) through unscreened. Wire a real assistant via
+    ``get_llm_assistant`` before relying on PACAR to approve anything.
+    """
+
     async def analyze_message_impact(self, content: str) -> dict[str, Any]:
+        _ = content
         return {
-            "risk_level": "low",
-            "confidence": 0.8,
-            "reasoning": ["default_review"],
-            "mitigations": ["none"],
+            "risk_level": "unreviewed",
+            "confidence": 0.0,
+            "reasoning": ["no_pacar_reviewer_configured"],
+            "mitigations": ["configure_pacar_reviewer"],
         }
 
     async def ainvoke_multi_turn(
         self, content: str, history: list[dict[str, Any]]
     ) -> dict[str, Any]:
+        _ = (content, history)
         return {
-            "recommended_decision": "approve",
-            "risk_level": "low",
-            "confidence": 0.8,
-            "reasoning": ["default_multi_turn_review"],
-            "mitigations": ["none"],
+            "recommended_decision": "reject",
+            "risk_level": "unreviewed",
+            "confidence": 0.0,
+            "reasoning": ["no_pacar_reviewer_configured"],
+            "mitigations": ["configure_pacar_reviewer"],
         }
 
 
-def get_llm_assistant() -> Any:
+def get_llm_assistant(config: BusConfiguration | None = None) -> Any:
+    factory = getattr(config, "pacar_assistant_factory", None)
+    if callable(factory):
+        try:
+            assistant = factory()
+        except Exception as exc:
+            logger.warning(
+                f"PACAR assistant factory raised {type(exc).__name__}; "
+                "falling back to _DefaultAssistant."
+            )
+            return _DefaultAssistant()
+        if assistant is not None:
+            return assistant
+        logger.warning(
+            "PACAR assistant factory returned None; falling back to _DefaultAssistant."
+        )
     return _DefaultAssistant()
 
 
 class PACARVerifier:
     def __init__(self, config: BusConfiguration | None = None) -> None:
         self.config = config or BusConfiguration()
-        self.assistant = get_llm_assistant()
+        self.assistant = get_llm_assistant(self.config)
         self.manager = PACARManager(config=self.config)
         self.redis_client: Any | None = None
         self.audit_client: Any | None = None
 
     async def verify(self, content: str, original_intent: str) -> dict[str, Any]:
         analysis = await self.assistant.analyze_message_impact(content)
+        # Fail closed: only an explicit low/medium risk verdict is valid. A missing,
+        # unknown, "high" or "critical" risk_level is invalid.
+        risk_ok = analysis.get("risk_level") in _ACCEPTABLE_RISK_LEVELS
+        # A reviewer that states a decision must state "approve"; "reject"/"review"/other
+        # blocks even when the risk level looks acceptable.
+        decision = analysis.get("recommended_decision")
+        if decision is not None and decision != "approve":
+            risk_ok = False
         return {
-            "is_valid": analysis.get("risk_level") != "high",
+            "is_valid": risk_ok,
             "confidence": analysis.get("confidence", 0.0),
             "reasoning": analysis.get("reasoning", []),
             "mitigations": analysis.get("mitigations", []),
-            "consensus_reached": analysis.get("risk_level") != "high",
+            "consensus_reached": risk_ok,
             "critique": analysis.get("reasoning", []),
         }
 
@@ -64,7 +113,8 @@ class PACARVerifier:
         session_id: str,
         tenant_id: str | None = None,
     ) -> dict[str, Any]:
-        redis_key = f"pacar:session:{session_id}"
+        scoped_session = _tenant_scoped_session(tenant_id, session_id)
+        redis_key = f"pacar:session:{scoped_session}"
         conversation: dict[str, Any]
         if self.redis_client is not None:
             existing = await self.redis_client.get(redis_key)
@@ -80,7 +130,7 @@ class PACARVerifier:
                 }
             )
         else:
-            state = await self.manager.get_state(session_id)
+            state = await self.manager.get_state(scoped_session)
             if hasattr(state, "model_dump") and callable(state.model_dump):
                 dumped = state.model_dump()
                 conversation = dumped if isinstance(dumped, dict) else {}
@@ -100,8 +150,19 @@ class PACARVerifier:
         multi_turn = await self.assistant.ainvoke_multi_turn(
             content, conversation.get("messages", [])
         )
+        # Fail closed: a missing or empty decision is treated as "reject", never "approve".
+        reviewer_decision = multi_turn.get("recommended_decision") or "reject"
+        # Same bar as single-turn verify(): an "approve" must also carry an explicit
+        # low/medium risk_level. "approve" with high/critical/missing risk is invalid.
+        risk_ok = multi_turn.get("risk_level") in _ACCEPTABLE_RISK_LEVELS
+        is_valid = reviewer_decision == "approve" and risk_ok
+        # Record the decision actually enforced, so session history (fed back to the
+        # reviewer next turn) and audit never label a blocked message "approve".
+        decision = (
+            "reject" if reviewer_decision == "approve" and not is_valid else reviewer_decision
+        )
         verification_result = {
-            "is_valid": multi_turn.get("recommended_decision", "approve") == "approve",
+            "is_valid": is_valid,
             "confidence": multi_turn.get("confidence", 0.0),
         }
         entry = {
@@ -115,7 +176,7 @@ class PACARVerifier:
         if len(conversation["messages"]) > 50:
             conversation["messages"] = conversation["messages"][-50:]
         conversation["session_id"] = session_id
-        conversation["tenant_id"] = tenant_id or conversation.get("tenant_id")
+        conversation["tenant_id"] = tenant_id  # key is tenant-scoped; never inherit another
         conversation["updated_at"] = datetime.now(UTC).isoformat()
 
         if self.redis_client is not None:
@@ -123,18 +184,18 @@ class PACARVerifier:
 
         if self.manager is not None:
             await self.manager.add_message(
-                session_id, MessageRole.USER, content, {"intent": original_intent}
+                scoped_session, MessageRole.USER, content, {"intent": original_intent}
             )
             await self.manager.add_message(
-                session_id,
+                scoped_session,
                 MessageRole.ASSISTANT,
                 "\n".join(multi_turn.get("reasoning", [])),
                 {"phase": "critique"},
             )
             await self.manager.add_message(
-                session_id,
+                scoped_session,
                 MessageRole.SYSTEM,
-                multi_turn.get("recommended_decision", "approve"),
+                decision,
                 {"phase": "decision"},
             )
 
@@ -143,8 +204,9 @@ class PACARVerifier:
             "confidence": verification_result["confidence"],
             "reasoning": multi_turn.get("reasoning", []),
             "mitigations": multi_turn.get("mitigations", []),
-            "recommended_decision": multi_turn.get("recommended_decision", "approve"),
-            "consensus_reached": multi_turn.get("recommended_decision", "approve") == "approve",
+            "recommended_decision": decision,
+            "reviewer_decision": reviewer_decision,
+            "consensus_reached": verification_result["is_valid"],
             "session_id": session_id,
             "message_count": len(conversation["messages"]),
         }

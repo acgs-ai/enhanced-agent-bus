@@ -8,6 +8,7 @@ Follows the Builder pattern for clean configuration management.
 
 import importlib
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlparse
@@ -159,6 +160,7 @@ class BusConfiguration:
     validator: object | None = None
     processor: object | None = None
     metering_config: object | None = None
+    pacar_assistant_factory: Callable[[], Any] | None = None
 
     # Queue backpressure settings
     max_queue_size: int = 10_000

@@ -128,10 +128,20 @@ def build_sdpc_verifiers(config: BusConfiguration) -> SDPCVerifiers:
             def __init__(self, evolution_controller: object) -> None:
                 self.evolution_controller = evolution_controller
 
+        class _NoOpPACARVerifier:
+            """PACAR is enforcing; without SDPC deps it must deny, not approve."""
+
+            async def verify(self, *args: object, **kwargs: object) -> JSONDict:
+                _ = (args, kwargs)
+                return {"is_valid": False, "confidence": 0.0}
+
+            async def verify_with_context(self, *args: object, **kwargs: object) -> JSONDict:
+                _ = (args, kwargs)
+                return {"is_valid": False, "confidence": 0.0}
         intent_classifier = _NoOpIntentClassifier(config=config)
         asc_verifier = _NoOpVerifier()
         graph_check = _NoOpVerifier()
-        pacar_verifier = _NoOpVerifier()
+        pacar_verifier = _NoOpPACARVerifier()
         evolution_controller = _NoOpEvolutionController()
         ampo_engine = _NoOpAMPOEngine(evolution_controller=evolution_controller)
         IntentType = cast(Any, _IntentType)

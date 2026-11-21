@@ -36,6 +36,11 @@ except ImportError:  # pragma: no cover
 
     _redis_backend = _RedisStub()
 
+_MAX_LOCAL_SESSIONS = 10_000
+# verify_with_context appends 3 messages per call; 150 keeps the same 50-turn window
+# as its Redis path and bounds memory for a sender that reuses one session_id.
+_MAX_SESSION_MESSAGES = 150
+
 _PACAR_OPERATION_ERRORS = (
     RuntimeError,
     ValueError,
@@ -72,12 +77,19 @@ class PACARManager:
         except _PACAR_OPERATION_ERRORS as exc:
             logger.error(f"PACAR get_state failed for {session_id}: {exc}")
             state = ConversationState(session_id=session_id)
-        self._local_history[session_id] = state
+        self._remember(session_id, state)
         return state
+
+    def _remember(self, session_id: str, state: ConversationState) -> None:
+        # Bounded in-process cache: evict oldest entries (dict keeps insertion order).
+        self._local_history.pop(session_id, None)
+        self._local_history[session_id] = state
+        while len(self._local_history) > _MAX_LOCAL_SESSIONS:
+            self._local_history.pop(next(iter(self._local_history)))
 
     async def save_state(self, state: ConversationState) -> None:
         state.updated_at = datetime.now(UTC).isoformat()
-        self._local_history[state.session_id] = state
+        self._remember(state.session_id, state)
         try:
             client = await self._get_redis()
             await client.setex(f"pacar:session:{state.session_id}", 3600, state.model_dump_json())
@@ -95,6 +107,8 @@ class PACARManager:
         state.messages.append(
             ConversationMessage(role=role, content=content, metadata=metadata or {})
         )
+        if len(state.messages) > _MAX_SESSION_MESSAGES:
+            del state.messages[:-_MAX_SESSION_MESSAGES]
         state.updated_at = datetime.now(UTC).isoformat()
         await self.save_state(state)
         return state
