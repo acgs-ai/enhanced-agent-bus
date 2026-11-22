@@ -90,7 +90,7 @@ use audit::AuditClient;
 
 /// Message types for agent communication
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 pub enum MessageType {
     Command,
     Query,
@@ -107,7 +107,7 @@ pub enum MessageType {
 
 /// Message priority levels
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 pub enum MessagePriority {
     Critical = 0,
     High = 1,
@@ -117,7 +117,7 @@ pub enum MessagePriority {
 
 /// Message processing status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 pub enum MessageStatus {
     Pending,
     Processing,
@@ -129,7 +129,7 @@ pub enum MessageStatus {
 
 /// Routing context for message delivery
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub struct RoutingContext {
     #[pyo3(get, set)]
     pub source_agent_id: String,
@@ -151,7 +151,7 @@ pub struct RoutingContext {
 
 /// Agent message structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub struct AgentMessage {
     #[pyo3(get, set)]
     pub message_id: String,
@@ -239,7 +239,7 @@ impl AgentMessage {
 
 /// Validation result structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub struct ValidationResult {
     #[pyo3(get, set)]
     pub is_valid: bool,
@@ -321,12 +321,12 @@ impl MessageProcessor {
         }
     }
 
-    fn register_handler(&self, message_type: MessageType, handler: PyObject) -> PyResult<()> {
+    fn register_handler(&self, message_type: MessageType, handler: Py<PyAny>) -> PyResult<()> {
         let handler = Arc::new(handler);
         let async_handler = Arc::new(move |msg: AgentMessage| {
             let handler = handler.clone();
             Box::pin(async move {
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     let _ = handler.call1(py, (msg,))?;
                     Ok(())
                 })
