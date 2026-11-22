@@ -27,7 +27,7 @@ uuid = { version = "1.21", features = ["v4"] }
 parking_lot = "0.12"
 futures = "0.3"
 rayon = "1.8"
-aws-lc-rs = "1.15"
+aws-lc-rs = "1.19"
 sha2 = "0.10"
 multiversion = "0.7"
 zeroize = { version = "1.7", features = ["derive"] }
